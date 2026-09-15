@@ -1,0 +1,120 @@
+/*
+ * Every token Dayboard's look is made of. This is the file to edit for a
+ * restyle; layout structure lives in globals.css, and the built-in layer
+ * accents are mirrored from data/config/layers.json so CSS can reach them.
+ *
+ * Dark only — there is no light palette and no media query. The ground colour
+ * is the one thing a user changes (Settings -> Screen & look), and the picker
+ * keeps it dark, so everything here must be readable on a near-black ground
+ * and nothing else.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* Ground and ink — neutral grey, the way Claude and Discord do dark.
+     This used to be a blue-black (#101216 through #22262f) with blue-grey text
+     to match. Every step is now a pure grey, which leaves the layer accents and
+     the club crests as the only colour on the board rather than making them
+     compete with a tinted ground. The two that carry the most area — the page
+     and the panels — are the ones the ground colour setting tints. */
+  --bg: #111111;
+  --bg-raised: #151515;
+  --surface: #1c1c1c;
+  --surface-sunken: #232323;
+  --ink: #ececec;
+  --ink-soft: #a6a6a6;
+  --ink-faint: #737373;
+  --line: #2a2a2a;
+  --line-strong: #3a3a3a;
+
+  /* Ground and glass — see components/Wallpaper.tsx.
+     --bg-deep is the wallpaper's own background, sitting on <html> so that a
+     machine with no WebGL degrades to a flat dark board rather than to white.
+     --glass is --bg-raised at 62%: the wallpaper's greys run #0d to #1d, so at
+     this alpha they mottle a panel by about ten levels — the same contrast the
+     wallpaper has, rather than a wash that may as well be opaque.
+     Sticky headers are deliberately NOT a colour here: nothing opaque can
+     match a ground that moves, so they blur their backdrop instead. See
+     .day-head in globals.css. */
+  /* --bg-user is stamped on <html> by layout.tsx from settings; --bg-ground is
+     the wallpaper's seam when the wallpaper is on and the plain --bg-user when
+     it is off. Everything else is derived, so one colour moves the lot. */
+  --bg-user: #111111;
+  --bg-ground: #010101;
+  --bg-deep: var(--bg-ground);
+  --glass: color-mix(in srgb, color-mix(in srgb, var(--bg-user), white 2%) 62%, transparent);
+
+  /* The whole board is drawn for 3440x1440 and scaled — see lib/screen.ts.
+     layout.tsx sets this from the screen preset, or measures the window. */
+  --board-zoom: 1;
+  /* A line that is one device pixel after the zoom. Gradients need it;
+     borders round up on their own. */
+  --hairline: calc(1px / var(--board-zoom));
+
+  /* Accents */
+  --accent: #4bc0c8;
+  --accent-ink: #06232a;
+  --today: #ff8a6b;
+
+  /* Layer accents — brightened for a dark ground; keep in step with layers.json */
+  --layer-health: #e2622b;
+  --layer-birthdays: #ea94b8;
+  --layer-personal: #86bf8a;
+  --layer-fallback: #98a2ad;
+
+  /* Voice presence. Green means people are in a call and you are not — the one
+     thing on that panel worth reacting to. PURPLE means you are already in it:
+     nothing to do, and red was overstating it on a board where red otherwise
+     means a disk is full or a line is down. 5.3:1 on the surface, and both are
+     paired with a word in the tile, never colour on its own. */
+  --voice-live: #5fd47f;
+  --voice-mine: #a97bd6;
+
+  /* Weather strip */
+  --weather-warm: #f0a75e;
+  --weather-cool: #7ab6e8;
+
+  /* Machine health, and the only traffic light on the board. Reserved: these
+     three mean healthy / watch it / act now on the PC tab and nothing else
+     anywhere, which is why they are not the voice or weather hues wearing a
+     second hat.
+
+     Measured, not chosen. Against this palette's own #1c1c1c surface they clear
+     CVD separation (ΔE 11.3 protan on the worst adjacent pair), normal-vision
+     separation (27.6) and contrast (all over 3:1). The orange that reads as the
+     obvious "warning" — #ec835a — measures 5.6 against the green under
+     protanopia, which is the classic traffic-light failure, so the middle step
+     is amber. The lightness spread across the three is deliberate and is what
+     carries the distinction when hue cannot. */
+  --ok: #0ca30c;
+  --warn: #fab219;
+  --crit: #d03b3b;
+
+  /* Shape and rhythm */
+  /* Nothing else on the board goes above 10 (a sticky day header), so the
+     subway alert card only has to clear that — but it is portalled to <body>
+     and shares a stacking context with the whole page, so it says so out loud. */
+  --z-popover: 100;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --gap: 16px;
+  --page-max: 720px;
+  --page-max-wide: 1240px;
+  --tap: 44px;
+  /* Every watch tile is this wide, whatever the service is called. Sized to fit
+     "Prime Video" on one line; longer names wrap to a second. */
+  --watch-w: 140px;
+
+  /* A video tile and a stream tile are the same object in two flavours, so they
+     stand the same height in the Watch rows rather than one row sitting a few
+     pixels proud of the other. Fixed rather than a floor: a long game name like
+     "Star Wars: Zero Company" wraps to two lines, and a minimum would let that
+     one tile stand taller than the rest of the row. Sized for the two-line case,
+     which every tile now reserves room for. */
+  --tile-h: 104px;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}

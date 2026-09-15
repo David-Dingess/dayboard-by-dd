@@ -1,0 +1,3 @@
+# imaplib and email are standard library; this is the only dependency, and only
+# so the app password can live in a .env file rather than in the environment.
+python-dotenv>=1.0

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Sports tab's window keeper.
+
+    A separate program from agent/nowplaying on purpose, and the reason is
+    privilege rather than tidiness: that agent runs at -RunLevel Highest for its
+    temperature sensors, so nothing short of an elevated shell can rebuild or
+    restart it. This one runs at the same integrity level as Chrome, is started
+    and supervised by the Next server, and is rebuilt by `npm run deploy` like
+    the rest of the board.
+
+    Plain net8.0-windows: no WinRT, just user32.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>dayboard-stream</AssemblyName>
+    <RootNamespace>Dayboard.Stream</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+</Project>

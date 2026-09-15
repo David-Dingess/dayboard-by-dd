@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Dayboard now-playing agent.
+
+    Targets a Windows TFM rather than plain net8.0 because that is what turns on
+    the CsWinRT projections — without it, Windows.Media.Control does not exist.
+    19041 is the floor for the SMTC session manager and is far below anything
+    a current Windows 11 build (26200), so it costs nothing to keep the floor low.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>dayboard-nowplaying</AssemblyName>
+    <RootNamespace>Dayboard.NowPlaying</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- One file to drop anywhere, so the scheduled task points at a fixed path. -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Only for WASAPI loopback + FFT. Nothing else in here needs it. -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <!--
+      Hardware sensors: CPU package temperature, GPU, fans, drive temps.
+
+      This one loads a KERNEL DRIVER (WinRing0-derived) to read MSRs and SuperIO
+      ports, which is why /vitals only reports temperatures when the process is
+      elevated. 0.9.4 is a floor, not a preference: it is the first release whose
+      signed driver ACLs its device to Administrators, and older WinRing0x64.sys
+      builds are what Defender's "vulnerable signed driver" rule flags. Do not
+      pin backwards.
+    -->
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.4" />
+  </ItemGroup>
+
+  <!--
+    LibreHardwareMonitorLib pulls HidSharp, which pulls Mono.Posix, which
+    publishes two native Mono shims beside the exe. They are Linux helpers, they
+    are never loaded on Windows .NET 8, and leaving them there would quietly end
+    the "one file to drop anywhere" property the scheduled task depends on —
+    dist/ would become a directory you have to copy whole.
+  -->
+  <Target Name="DropMonoPosixNatives" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish
+        Remove="@(ResolvedFileToPublish)"
+        Condition="'%(Filename)' == 'MonoPosixHelper' or '%(Filename)' == 'libMonoPosixHelper'" />
+    </ItemGroup>
+  </Target>
+
+</Project>

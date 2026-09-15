@@ -1,0 +1,188 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "Name": "Dayboard",
+  "Version": "1.0.0.0",
+  "Author": "Dayboard by DD",
+  "Description": "Drive the Dayboard wall from the deck: tabs, videos, streams, team matches, water, sound and the reset.",
+  "Category": "Dayboard",
+  "CategoryIcon": "imgs/category",
+  "Icon": "imgs/plugin",
+  "URL": "http://127.0.0.1:6767",
+  "SDKVersion": 2,
+  "Software": {
+    "MinimumVersion": "6.5"
+  },
+  "OS": [
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Nodejs": {
+    "Version": "20",
+    "Debug": "enabled"
+  },
+  "CodePath": "bin/plugin.js",
+  "Actions": [
+    {
+      "UUID": "com.dayboard.deck.tab",
+      "Name": "Panel tab",
+      "Tooltip": "Show a tab in the centre or right panel.",
+      "Icon": "imgs/actions/tab",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/actions/tab",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "UUID": "com.dayboard.deck.video",
+      "Name": "Video slot",
+      "Tooltip": "Play the nth unwatched video from the subscriptions list.",
+      "Icon": "imgs/actions/video",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/actions/video",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "UUID": "com.dayboard.deck.stream",
+      "Name": "Stream slot",
+      "Tooltip": "Play the nth live Twitch channel.",
+      "Icon": "imgs/actions/stream",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/actions/stream",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "UUID": "com.dayboard.deck.expand",
+      "Name": "Full panel video",
+      "Tooltip": "Fill the centre panel with the player, or send it back to the corner.",
+      "Icon": "imgs/actions/expand",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/actions/expand",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "UUID": "com.dayboard.deck.water",
+      "Name": "Water",
+      "Tooltip": "Log a drink. A negative amount is the undo.",
+      "Icon": "imgs/actions/water",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/actions/water",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "UUID": "com.dayboard.deck.audio",
+      "Name": "Output",
+      "Tooltip": "Move the sound between headphones and speakers.",
+      "Icon": "imgs/actions/audio",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/actions/audio",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "UUID": "com.dayboard.deck.mute",
+      "Name": "Mute",
+      "Tooltip": "Silence whichever room is live, and remember which it was.",
+      "Icon": "imgs/actions/mute",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/actions/mute",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "UUID": "com.dayboard.deck.alerts",
+      "Name": "Turn on alerts",
+      "Tooltip": "Arm the nudge chime and the notification grant, without touching the board.",
+      "Icon": "imgs/actions/alerts",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/actions/alerts",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "UUID": "com.dayboard.deck.team",
+      "Name": "Team slot",
+      "Tooltip": "Open the nth team's streaming site in the Sports tab.",
+      "Icon": "imgs/actions/team",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/actions/team",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "UUID": "com.dayboard.deck.reset",
+      "Name": "Reset the board",
+      "Tooltip": "Reload the board, and restart its server when one is supervising it.",
+      "Icon": "imgs/actions/reset",
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "States": [
+        {
+          "Image": "imgs/actions/reset",
+          "TitleAlignment": "middle"
+        }
+      ]
+    }
+  ]
+}

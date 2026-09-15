@@ -1,0 +1,9 @@
+# Order-history scraper: https://github.com/alexdlaird/amazon-orders
+# The [browser] extra pulls Playwright, which the library uses to clear Amazon's
+# JavaScript sign-in challenge during login (the headless poll reuses the saved
+# session and needs no browser). After installing, fetch the browser binary once:
+#   python -m playwright install chromium
+# Pinned loosely — if a field mapping in poll.py breaks after an upgrade, pin the
+# version you logged in with here.
+amazon-orders[browser]>=4.0
+python-dotenv>=1.0

@@ -1,0 +1,7982 @@
+@import "../styles/theme.css";
+
+/* Structure only. Colours, spacing scale and type live in theme.css. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  /* The ground under the wallpaper canvas, and what shows if WebGL is
+     unavailable or the wallpaper is off. It is on <html> rather than <body> so
+     that body can be transparent without the browser propagating a background
+     up to the viewport and burying the canvas. */
+  background: var(--bg-deep);
+  /* The board at its designed size, scaled to this screen. `zoom` rather than
+     a transform: it changes layout. Viewport units are the one exception and
+     nothing has to be measured twice. */
+  zoom: var(--board-zoom);
+}
+
+/* The animated ground. Fixed and behind everything, and it must never take a
+   click: the board is a touch surface and every pixel of it belongs to a
+   widget. */
+.wallpaper {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  display: block;
+  pointer-events: none;
+}
+
+body {
+  margin: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  /* Sized up ~30% by request: read across a room, not a desk. */
+  font-size: 21px;
+  line-height: 1.45;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+a {
+  color: inherit;
+}
+
+/* ---- agenda ----------------------------------------------------------- */
+
+.day {
+  margin-bottom: 28px;
+}
+
+.day-head {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 0 6px;
+  /* NO GROUND OF ITS OWN. The date sits straight on the panel.
+     Two earlier answers were both wrong. Opaque --bg-raised was invisible while
+     the panels were opaque, and became a grey box the moment they went to glass;
+     nothing opaque can match a ground that moves. A backdrop blur was worse in a
+     subtler way: the wallpaper has hard black seams running through it, so the
+     blur smeared them WITHIN the header's own bounds and that smear read as a
+     box too — a blur only disappears over a smooth backdrop, and this one is not.
+     The cost is that a row scrolling past now runs under the date rather than
+     being hidden by it. The board is read far more than it is scrolled, and a
+     box that is there every second of the day is the worse of the two. */
+  background: transparent;
+  box-shadow: 0 1px 0 var(--line);
+  /* That shadow is the divider between the date and its events, and it was
+     landing on the exact pixel the first row starts on. A row with a watch tile
+     has an 8px gap between its two tiles, so the divider showed through that gap
+     in the same colour as their borders and read as a line welding the game to
+     its watch button. It needs room under it, not removing. */
+  margin-bottom: 10px;
+}
+
+.day-date {
+  font-weight: 650;
+  font-size: 20px;
+}
+
+.day-rel {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--today);
+}
+
+.day-weekday {
+  font-size: 17px;
+  color: var(--ink-faint);
+  margin-left: auto;
+}
+
+.events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+/* The row link and the watch link are siblings — nesting anchors is invalid
+   HTML — so the wrapper carries the layout and the row link fills it. */
+.event-wrap {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.event-wrap > .event {
+  flex: 1;
+  min-width: 0;
+}
+
+/* One width for every tile, so the agenda has a straight right edge.
+   Previously `flex: none` + `nowrap` let the service name set the width, which
+   ran from 78px (FOX) to 135px (Prime Video) and made the column look ragged.
+   The name is unbounded — watch.ts carries "Peachtree Sports Network" and passes
+   regional network names through verbatim — so the label stacks under the icon
+   and wraps, rather than being allowed to push the box wider. */
+.event-watch {
+  flex: 0 0 var(--watch-w);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 10px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-size: 14px;
+  text-align: center;
+}
+
+.event-watch:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+
+.event-watch-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+  /* Two lines, then ellipsis. `anywhere` matters for the long single words that
+     turn up in regional network names. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* On a phone the service name is the first thing to go — and with the label
+   hidden, a fixed 140px would just be an empty box. */
+@media (max-width: 640px) {
+  .event-watch {
+    flex: 0 0 auto;
+    min-width: var(--tap);
+    padding: 0 12px;
+  }
+  .event-watch-label {
+    display: none;
+  }
+}
+
+/* Done is not gone. A finished event fades rather than disappearing, the way a
+   watched video does — the day still reads as a whole, and you can see what you
+   already did. One rule covers all three renderers: the agenda row, the pill the
+   week and month grids share, and the week's timed block.
+
+   opacity, not a colour swap, because it takes the layer crest down with it. A
+   full-brightness club badge on a greyed row would still pull the eye, which is
+   the exact thing this is for. */
+/* THE FADE IS ON THE CONTENTS, NOT THE TILE. Fading the tile itself was right
+   while every panel was opaque: it faded onto --bg-raised and read as a dimmer
+   tile. The panels are glass now (see components/Wallpaper.tsx), so the same
+   rule faded a finished row onto the WALLPAPER — it went see-through while the
+   rows above and below it stayed solid. Fading what SITS ON the tile leaves the
+   ground opaque and looks the way it always did. Every one of these renderers
+   wraps its content in elements, so `> *` reaches all of it, crest included. */
+.event.is-past > *,
+.pill.is-past > *,
+.weekevent.is-past > * {
+  opacity: 0.45;
+}
+
+/* The accent stripe is a border on the tile itself, out of reach of the rule
+   above, so it needs dimming of its own — otherwise a finished row keeps a
+   full-brightness club colour, which is the one thing the fade is for. */
+.event.is-past,
+.pill.is-past,
+.weekevent.is-past {
+  border-left-color: color-mix(
+    in srgb,
+    var(--layer-color, var(--layer-fallback)) 45%,
+    var(--surface)
+  );
+}
+
+/* Hovering one brings it back — a past event is still a link to its detail
+   page, and a control you can point at should respond. */
+.event.is-past:hover > *,
+.pill.is-past:hover > *,
+.weekevent.is-past:hover > * {
+  opacity: 1;
+}
+
+.event.is-past:hover,
+.pill.is-past:hover,
+.weekevent.is-past:hover {
+  border-left-color: var(--layer-color, var(--layer-fallback));
+}
+
+.event {
+  display: grid;
+  grid-template-columns: 88px auto 1fr;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 18px;
+  min-height: var(--tap);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--layer-color, var(--layer-fallback));
+  border-radius: var(--radius);
+  text-decoration: none;
+}
+
+.event:hover {
+  border-color: var(--line-strong);
+}
+
+.event-time {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.event-title {
+  font-weight: 550;
+}
+
+.event-meta {
+  grid-column: 3;
+  font-size: 16px;
+  color: var(--ink-faint);
+}
+
+.event.is-cancelled .event-title {
+  text-decoration: line-through;
+  color: var(--ink-faint);
+}
+
+.tag {
+  display: inline-block;
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  color: var(--ink-faint);
+  vertical-align: 1px;
+}
+
+/* ---- generic bits ----------------------------------------------------- */
+
+.empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--ink-faint);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+}
+
+.section-title {
+  font-size: 19px;
+  font-weight: 650;
+  margin: 28px 0 10px;
+}
+
+.muted {
+  color: var(--ink-soft);
+  font-size: 17px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  padding: 0 18px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.input {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 12px;
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+}
+
+.watchbox {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.watch-note {
+  font-size: 15px;
+  color: var(--ink-faint);
+  margin: 0;
+}
+
+.watch-secondary {
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+/* ---- layer marks (club crests and emoji) ------------------------------ */
+
+.mark {
+  flex: none;
+  display: inline-block;
+}
+
+.mark-logo {
+  /* Club crests are drawn for white backgrounds; a navy crest vanishes
+     entirely without this. The disc also makes the set read as one badge set
+     rather than stray images. */
+  background: #fff;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.35);
+}
+
+.mark-logo img {
+  display: block;
+  width: 76%;
+  height: 76%;
+  object-fit: contain;
+}
+
+.mark-emoji {
+  /* Square and grid-centred, exactly like .mark-logo: sized only by font-size,
+     the box came out 22x19 and emoji sat off the axis the crests sit on. */
+  display: inline-grid;
+  place-items: center;
+  line-height: 1;
+  font-family:
+    "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", var(--font-sans);
+}
+
+.event-mark {
+  align-self: center;
+}
+
+/* ---- weather ---------------------------------------------------------- */
+
+.weather {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.weather-glyph {
+  font-size: 15px;
+}
+
+.weather-high {
+  color: var(--weather-warm);
+}
+
+.weather-low {
+  color: var(--weather-cool);
+}
+
+/* ---- week grid (the Outlook-style hourly view) ------------------------ */
+
+.wide {
+  max-width: var(--page-max-wide);
+}
+
+.weekwrap {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--glass);
+  overflow: hidden;
+}
+
+.weekscroll {
+  overflow-x: auto;
+}
+
+/* The week owns the full height of the panel: header and all-day row take what
+   they need, the hour grid takes the rest. Hours used to be a fixed 52px each,
+   which left a 1440px screen with a band of dead space under the last one. */
+.weekinner {
+  min-width: 940px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  /* One source of truth for the hour-gutter width: the header, the all-day row
+     and the hour grid are three separate grids, and they must agree. */
+  --week-gutter: 70px;
+}
+
+/* Week only. Its grid stretches to the space it is given, so a scroller — which
+   offers unbounded height — is the one container it cannot size against.
+   Sideways still scrolls: seven columns have a 940px floor. */
+.widget-scroll.is-fixed {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* FLUSH TO THE PANEL. Every other widget wants .widget-scroll's 16px of side
+   padding; this one is a ruled grid, and 16px of inset left the hour lines
+   stopping short of the panel on both sides with a strip of background beyond
+   them — which reads as the grid being clipped rather than as breathing room.
+   The bottom goes too, so the last hour band ends on the panel edge instead of
+   18px above it. The top stays: that gap separates the grid from the widget
+   head, which is a different rule from the ones inside it.
+
+   Not when the editor is open — there the grid shares the row with a form, and
+   a form against the panel edge is the thing padding is for. */
+.widget-scroll.is-fixed:not(.is-split) {
+  padding-left: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+}
+
+.weekhead {
+  flex: none;
+  display: grid;
+  grid-template-columns: var(--week-gutter) repeat(7, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  /* Transparent and blurred, for the reason spelled out on .day-head. */
+  background: transparent;
+  backdrop-filter: blur(14px);
+}
+
+.weekhead-cell {
+  min-width: 0;
+  padding: 8px 6px;
+  text-align: center;
+  border-left: 1px solid var(--line);
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+}
+
+.weekhead-cell:first-child {
+  border-left: none;
+}
+
+.weekhead-dow {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.weekhead-num {
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+.weekhead-cell.is-today .weekhead-num {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 999px;
+  min-width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.weekallday {
+  flex: none;
+  display: grid;
+  grid-template-columns: var(--week-gutter) repeat(7, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+  min-height: 30px;
+}
+
+.weekallday-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 6px 4px;
+  text-align: right;
+}
+
+.weekallday-cell {
+  border-left: 1px solid var(--line);
+  padding: 4px;
+  display: grid;
+  gap: 3px;
+  align-content: start;
+  min-width: 0;
+}
+
+.weekgrid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--week-gutter) repeat(7, minmax(0, 1fr));
+  position: relative;
+}
+
+/* --hour-count comes from the widget, which knows how many hours it drew. Equal
+   fractions rather than a pixel height is the whole trick: the row size falls
+   out of the panel's height instead of dictating it. */
+.weekhours {
+  display: grid;
+  grid-template-rows: repeat(var(--hour-count, 18), minmax(0, 1fr));
+}
+
+.weekhour {
+  min-height: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink-faint);
+  text-align: right;
+  padding: 3px 8px 0 0;
+}
+
+.weekcol {
+  position: relative;
+  border-left: 1px solid var(--line);
+  /* One line at the top of every hour band, matching the label beside it. */
+  /* A percentage stop in a `to bottom` gradient is a share of the box's own
+     height, so the hour rules stay glued to the rows however tall they get. */
+  /* One DEVICE pixel, whatever the board's zoom: a 1px stripe at zoom 0.75 is
+     three quarters of a pixel and anti-aliases into nothing, which is the
+     hour grid quietly disappearing on a 1080p screen. */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--line) 0 var(--hairline),
+    transparent var(--hairline) calc(100% / var(--hour-count, 18))
+  );
+  background-repeat: repeat;
+}
+
+/* The hour gutter needs the same lines, or the labels float against nothing. */
+.weekhours {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--line) 0 var(--hairline),
+    transparent var(--hairline) calc(100% / var(--hour-count, 18))
+  );
+}
+
+.weekcol.is-today {
+  background-color: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.weekevent {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  /* Percentage heights mean a 15-minute event can round to a couple of pixels;
+     this is the floor at which it is still a thing you can see and click. */
+  min-height: 20px;
+  overflow: hidden;
+  padding: 3px 5px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--layer-color, var(--layer-fallback));
+  background: color-mix(in srgb, var(--layer-color, var(--layer-fallback)) 20%, var(--surface));
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+.weekevent:hover {
+  background: color-mix(in srgb, var(--layer-color, var(--layer-fallback)) 32%, var(--surface));
+}
+
+.weekevent-time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+  display: block;
+}
+
+/* The crest, same as the month and agenda carry — a team's match should be
+   recognisable in every view without reading it. */
+.weekevent-body {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.weekevent-mark {
+  flex: none;
+}
+
+.weekevent-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A bare text node in a flex/grid item won't ellipsise; it needs its own box. */
+.pill-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pill {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--layer-color, var(--layer-fallback));
+  background: color-mix(in srgb, var(--layer-color, var(--layer-fallback)) 18%, var(--surface));
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.3;
+  text-decoration: none;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---- month grid ------------------------------------------------------- */
+
+.monthgrid {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--glass);
+}
+
+.monthdow {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+}
+
+.monthdow span {
+  padding: 9px 8px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.monthweeks {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+}
+
+.monthcell {
+  min-width: 0;
+  min-height: 138px;
+  border-left: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  padding: 5px;
+  display: grid;
+  gap: 3px;
+  align-content: start;
+}
+
+.monthcell:nth-child(7n + 1) {
+  border-left: none;
+}
+
+.monthcell.is-outside {
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+}
+
+.monthcell.is-outside .monthnum {
+  color: var(--ink-faint);
+}
+
+.monthcell.is-today {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.monthcell-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 1px;
+}
+
+.monthnum {
+  font-size: 15px;
+  font-weight: 600;
+  min-width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.monthcell.is-today .monthnum {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: 999px;
+}
+
+.monthmore {
+  font-size: 13px;
+  color: var(--ink-faint);
+  padding-left: 4px;
+  text-decoration: none;
+}
+
+@media (max-width: 640px) {
+  .monthcell {
+    min-height: 96px;
+    padding: 3px;
+  }
+  .pill {
+    font-size: 12px;
+    padding: 1px 4px;
+  }
+  .monthcell .pill .mark {
+    display: none;
+  }
+}
+
+/* ---- triboard --------------------------------------------------------- */
+
+/* Three columns filling one ultrawide screen: nothing scrolls at the page
+   level, each panel scrolls inside itself, and each keeps its toggle pinned to
+   the bottom where the hand is. */
+.triboard {
+  display: grid;
+  /* The left column holds several widgets at once rather than one at a time,
+     so it is the widest of the two outer columns; the centre still dominates. */
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 14px;
+  /* vh does not scale with zoom, so the zoom is divided back out — see
+     lib/screen.ts. Without this a 1080p board fills three quarters of the
+     window and leaves a band of wallpaper under the columns. */
+  height: calc(100vh / var(--board-zoom));
+  padding: 14px;
+}
+
+.panel {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  /* Glass, so the wallpaper reads through the board rather than only in the
+     14px gutters between the columns. Deliberately NO backdrop-filter: the
+     wallpaper is already smooth, so a blur would cost three full-screen
+     re-blurs per frame, for ever, and look identical. */
+  background: var(--glass);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.panel-body {
+  min-height: 0;
+  display: grid;
+}
+
+/* Every widget is server-rendered; the panel just shows one. Generic on
+   purpose — adding a widget needs no CSS. */
+.widget-slot {
+  display: none;
+  min-height: 0;
+}
+
+.widget-slot.is-active {
+  display: block;
+  min-height: 0;
+  height: 100%;
+}
+
+/* The left column: four widgets at once, no toggle, no title bars.
+ *
+ * Three of them are rigid and one gives. Subway, Now Playing and Discord are
+ * short and fixed by their own content — a train tile is a train tile. Weather
+ * is the tall one and the only one with anything to lose, so it is the single
+ * flexible track: on a short window its hour strips scroll inside themselves and
+ * the other three stay whole, which is the opposite of what `flex-shrink`
+ * defaults would do (squeeze all four a little, ruin all four a little). */
+.panel.is-stack {
+  display: flex;
+  flex-direction: column;
+  /* The column itself never scrolls; that is the whole promise of the stack. */
+  overflow: hidden;
+}
+
+.panel.is-stack > .widget {
+  flex: 0 0 auto;
+  /* .widget is normally a full-height auto/1fr grid, which is right for a widget
+     that owns its panel and wrong for one sharing a column with three others. */
+  display: block;
+  height: auto;
+  min-height: 0;
+}
+
+.panel.is-stack > .widget + .widget {
+  border-top: 1px solid var(--line);
+}
+
+/* ROOM TO BREATHE, PAID FOR OUT OF WEATHER. Every rigid widget in this column
+   sat at 12/16 and read as cramped, but the stack promises never to scroll, so
+   padding here is not free — it comes straight out of the one flexible track,
+   which is weather. Measured at 3440x1440 before spending any of it: weather's
+   content was 268px inside a 435px box, so there were 143px going spare and
+   this spends most of them.
+
+   20px IS NEAR A CLIFF, and the cliff was found by falling off it. Every rigid
+   widget in this column grows about 14.75px for each 1px added here, and all of
+   that comes out of weather — which needs roughly 322px plus its own padding.
+   Solving the two gives a break-even at 22px, where weather has 3px to spare
+   and one extra hour strip on a busier forecast puts a scrollbar in it. 20
+   leaves ~37px, about one strip of headroom, and is the largest value that
+   still has a margin worth having. Raise it only after re-measuring against a
+   FULL forecast, and measure the scroller's scrollHeight rather than the sum of
+   its children — the children exclude this very padding, which is what made the
+   first estimate of the available slack far too generous. */
+.panel.is-stack > .widget > .widget-scroll {
+  overflow: visible;
+  padding: 20px 18px;
+}
+
+/* A label, not a header bar. The stack has room for four small ones but not for
+   four of .widget-head's 21px titles and rules — and a stack wants section
+   labels anyway, the way the weather strips already label themselves. */
+.stack-title {
+  display: flex;
+  /* Centre, not baseline — and the two are the same picture only because the
+     line-height below is a length every child inherits. Baseline made the row's
+     height depend on its TALLEST ascent, so a label carrying .stack-meta (13px
+     sans) sat 1px lower than a bare one, which is visible in .stackrow where
+     two labels are side by side. Every item now occupies the same 20px line
+     box, so they coincide by construction. */
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 18px 18px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  /* A LENGTH, not a number, and that is the whole point: it cascades into
+     .stack-meta (13px sans) and .freshness (11px mono) unchanged, so a label
+     row is exactly as tall whether or not it carries one. Left at normal, the
+     line box grew with its tallest child, and "Now Playing / Apple Music" sat
+     2px lower than "Next up" beside it in .stackrow. */
+  line-height: 20px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* Where "Upper East Side" and the player name live: same row, quieter, and
+   spelled the way a human wrote it rather than shouted in mono caps. */
+.stack-meta {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-faint);
+  opacity: 0.8;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stack-title + .widget-scroll {
+  padding-top: 13px;
+}
+
+/* What is left of the refresh button: the honest half. A second-monitor dashboard shows
+   the same numbers whether it is live or frozen, so the age is the only thing
+   that can tell you which. Pushed to the far right of the label row, and grey
+   in both of its states — see .is-stale below. */
+.freshness {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ink-faint);
+  opacity: 0.7;
+}
+
+/* Stale stays inside the grey family by request — no orange in the label row.
+   It still separates itself from a fresh label, by stepping up one ink token and
+   dropping the dimming, which is enough to notice without becoming a colour. */
+.freshness.is-stale {
+  color: var(--ink-soft);
+  opacity: 1;
+}
+
+/* Weather is the one flexible track in the stack — the only widget with
+   anything to give. It is marked with a class rather than :nth-child(2),
+   because its position is an accident of the order: inserting anything above it
+   used to hand the give to the wrong widget, silently, with no CSS to grep. */
+/* A stack row's empty state is a SENTENCE, not a panel. .empty's usual 40px of
+   padding and dashed box are sized for a whole widget with nothing in it, and
+   in this column they cost about 100px to say "nobody is in voice" — which is
+   the normal state most of the day.
+
+   THE SECOND SELECTOR IS THE WATER/USAGE ROW, one level deeper than the direct
+   child above can see, and it was missing. The cost was not cosmetic: the
+   Claude half says "Checking…" on every load and again whenever the agent is
+   unreachable, and with the panel treatment that one word made the half 293px
+   instead of 208 — an 84px swing that came straight out of weather and put a
+   scrollbar in it. The same trap as .stackrow's other restated rules. */
+.panel.is-stack > .widget > .widget-scroll > .empty,
+.panel.is-stack > .widget > .stackrow > .widget > .widget-scroll > .empty,
+.stackrow > .widget > .widget-scroll > .empty {
+  padding: 5px 0;
+  border: 0;
+  text-align: left;
+}
+
+.panel.is-stack > .widget.is-flex {
+  flex: 1 1 auto;
+}
+
+.panel.is-stack > .widget.is-flex > .widget-scroll {
+  height: 100%;
+  overflow: auto;
+}
+
+.panel-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-sunken);
+}
+
+.panel-tab {
+  flex: 1;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-faint);
+  font-family: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.panel-tab:hover {
+  color: var(--ink-soft);
+}
+
+/* Only ever set on a tab you are NOT looking at — see Panel.tsx. It borrows the
+   voice green because it means the same thing there: something arrived and you
+   have not seen it. */
+.panel-tab.has-alert {
+  color: var(--voice-live);
+  border-color: color-mix(in srgb, var(--voice-live) 45%, transparent);
+  animation: alert-pulse 2s ease-in-out infinite;
+}
+
+.panel-tab.has-alert:hover {
+  animation: none;
+}
+
+/* The quieter alert: a widget saying something on its own tab is critical. No
+   pulse and no green — on this board green-and-pulsing means "new, and you have
+   not dealt with it", and a disk that has been full since Tuesday is neither. */
+.panel-tab.has-warn {
+  border-color: color-mix(in srgb, var(--crit) 45%, transparent);
+}
+
+.panel-tab-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 7px;
+  border-radius: 50%;
+  background: var(--crit);
+  vertical-align: 1px;
+}
+
+.panel-tab[aria-pressed="true"] {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+/* ---- widget shell ----------------------------------------------------- */
+
+.widget {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+/* Baseline, not centre: the subtitle beside a 21px title is 15px, and centring
+   the two leaves the smaller one floating half a line high. They read as one
+   line only when they sit on one. */
+.widget-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.widget-title {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.widget-meta {
+  color: var(--ink-faint);
+  font-size: 15px;
+}
+
+.widget-scroll {
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px 18px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* The calendar's mode toggle and stepper sit in its own head. */
+.widget-head .viewswitch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-sunken);
+  border-radius: 999px;
+}
+
+.widget-head .viewswitch a {
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 16px;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+
+.widget-head .viewswitch a[aria-current="page"] {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.widget-head .stepper {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.widget-head .stepper a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 16px;
+  text-decoration: none;
+}
+
+.widget-head .stepper a:hover {
+  color: var(--ink);
+  border-color: var(--ink-faint);
+}
+
+/* ---- youtube ---------------------------------------------------------- */
+
+/* The green number beside a section title: how many are live, how many are
+   unwatched. Shared by both rows of the Watch tab on purpose — it answers the
+   same question in each, "is there anything in here for me". It is
+   never zero; the component renders nothing rather than a green nought. */
+.headcount {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--voice-live);
+}
+
+
+/* A tile grid, not a column. The right panel on an ultrawide is wide enough for
+   two of these side by side and was spending half its width on nothing.
+
+   TWO COLUMNS, NEVER THREE. The 48% is what caps it — three tracks cannot fit in
+   100% — and the 290px floor is what drops it back to one when the panel is too
+   narrow to be worth splitting. Both are read off the REAL panel width rather
+   than the viewport, which matters because a viewport media query knows nothing
+   about a three-column board. The Twitch list uses the identical rule, so the two
+   halves of the tab read as one kind of object. */
+.videos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(max(290px, 48%), 1fr));
+  gap: 10px;
+}
+
+.video {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  /* Level with a stream tile, and with every other tile in the row — see
+     --tile-h. Fixed, not a minimum: a game name that wraps has to fit the tile
+     rather than stretch it. */
+  height: var(--tile-h);
+  overflow: hidden;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-decoration: none;
+}
+
+.video:hover {
+  border-color: var(--line-strong);
+}
+
+/* Posted in the last half hour and not yet opened. Same language as a live
+   voice channel, deliberately: green and pulsing means "new, and you have not
+   dealt with it". Marking it watched settles it, and so does hovering. */
+.video-item.is-fresh .video {
+  border-color: var(--voice-live);
+  background: color-mix(in srgb, var(--voice-live) 8%, var(--surface));
+  animation: alert-pulse 2s ease-in-out infinite;
+}
+
+.video-item.is-fresh .video:hover {
+  animation: none;
+}
+
+.video-thumb {
+  width: 112px;
+  height: 63px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.video-body {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.video-title {
+  /* Room for the corner toggle, which overlaps this line. */
+  padding-right: 26px;
+  font-size: 16px;
+  font-weight: 550;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* The joke, directly under the game — no reserved gap when the game fits on one
+   line. Lining the statements up across the row was tidier on paper and looked
+   like a missing line in practice, so the tile keeps its fixed height and the
+   text simply sits at the top of it.
+
+   One line and then an ellipsis on purpose: it is the less important
+   half, and a second line here would be a line taken off the game name, which
+   sometimes needs two. */
+.video-statement {
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.video-meta {
+  font-size: 14px;
+  color: var(--ink-faint);
+}
+
+.setup {
+  font-size: 16px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.setup ol {
+  padding-left: 22px;
+  display: grid;
+  gap: 6px;
+}
+
+.setup-cmd {
+  padding: 10px 12px;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+/* ---- weather: now, hourly, week ahead --------------------------------- */
+
+/*
+ * Conditions on the left, today's twelve hours on the right. The weather is the
+ * stack's only flexible track, so this block is where the room for Up Next and
+ * the Quick row came from: what used to be a tile above a full-width strip is
+ * now one band of the same height as the tile alone.
+ */
+.wxtop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.wxnow {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.wxnow-glyph {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.wxnow-temp {
+  font-size: 38px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.wxnow-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wxnow-label {
+  font-size: 16px;
+  font-weight: 550;
+}
+
+.wxnow-detail {
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.hourblock {
+  margin-bottom: 14px;
+}
+
+.hourblock-title {
+  margin: 0 0 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/*
+ * The hours divide the panel rather than scrolling inside it. auto-flow column
+ * with 1fr auto-columns means the track count follows the markup, so changing
+ * FIRST_HOUR/LAST_HOUR in WeatherWidget re-splits the row on its own and there is
+ * no column count to keep in step. Widening the panel widens every tile.
+ */
+.hours {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 6px;
+  display: grid;
+  grid-auto-flow: column;
+  /* 1fr wins at any panel width worth using, so the row divides itself edge to
+     edge. The 36px floor is only reached on a genuinely narrow window, where
+     scrolling is better than clipping a three-digit temperature. */
+  grid-auto-columns: minmax(36px, 1fr);
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.hour {
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 8px 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+/* Twelve tiles in one column's width gets tight before it gets wide. Nothing
+   here may wrap — a two-line tile would shove the row below it out of line. */
+.hour > * {
+  white-space: nowrap;
+}
+
+.hour-time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.hour-glyph {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.hour-temp {
+  font-size: 16px;
+  font-weight: 550;
+}
+
+.hour-precip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--weather-cool);
+  min-height: 13px;
+}
+
+/*
+ * Twelve hours as four columns of three, filled DOWNWARD — the first three
+ * hours in column one, the next three in column two, and so on. That is what
+ * `grid-auto-flow: column` against three explicit rows does; the markup stays a
+ * plain list in time order.
+ *
+ * The tiles lose their borders here. Twelve bordered boxes beside the current
+ * conditions read as a second panel arguing with the first; twelve plain lines
+ * read as a timetable, which is what they are.
+ */
+.hours.is-compact {
+  grid-auto-flow: column;
+  grid-template-rows: repeat(3, auto);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-columns: auto;
+  gap: 4px 10px;
+  /* A TILE OF ITS OWN, matching the conditions tile beside it, rather than
+     twelve lines floating next to a bordered box. */
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: visible;
+  align-content: center;
+}
+
+.hours.is-compact .hour {
+  grid-template-columns: 30px 20px minmax(0, 1fr) auto;
+  justify-items: start;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border: 0;
+  background: transparent;
+}
+
+.hours.is-compact .hour-glyph {
+  font-size: 15px;
+}
+
+.hours.is-compact .hour-temp {
+  font-size: 14px;
+}
+
+.hours.is-compact .hour-precip {
+  min-height: 0;
+}
+
+/* ---- youtube ---------------------------------------------------------- */
+
+.headlink {
+  margin-left: auto;
+  font-size: 15px;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.headlink:hover {
+  text-decoration: underline;
+}
+
+.video-item {
+  position: relative;
+}
+
+/* Clearing a tile is a write to data/watched.json now, so there is a moment
+   between the click and the tile going. Dim it, exactly as a job tile dims —
+   there is no optimistic removal here either, for the reason in JobTiles. */
+/* Contents, not the tile — see the note on .event.is-past above. */
+.video-item.is-pending > * {
+  opacity: 0.5;
+}
+
+/* Tucked into the tile's own corner rather than sitting under it on a line of
+   its own. In a two-column grid a "Mark watched" label was wider than the tile
+   could spare, and this is a control you press with your eyes already on the
+   thumbnail. One-way: pressing it takes the tile off the list, so there is no
+   "done" state to draw. The words survive in the title and aria-label, which is
+   where a screen reader looks anyway. */
+.video-watched {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  /* Opaque, not transparent: it sits over the tile's own background and a
+     see-through box on a title line reads as a rendering bug. */
+  background: var(--surface-sunken);
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+
+.video-watched svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.video-watched:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+
+/* ---- the week ahead: five tiles, one row ------------------------------ */
+
+/* THE FIRST TILE IS WIDER, because it is the only one whose day is a word.
+   "Tomorrow" is 72px where "Wed" is 28, and beside a two-digit date — "28 Sep",
+   the widest this line ever gets — the pair needed 118.1px inside a 120.5px
+   box. It fitted, by 2.4px, which is not the same as being safe: a font
+   fallback or a rounding difference on another day would have pushed the date
+   onto a second line and made the whole row taller for a fortnight each month.
+   1.12fr buys it about 17px, which is margin rather than luck. */
+.ahead {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1.12fr repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/*
+ * TWO COLUMNS INSIDE THE TILE, not five stacked lines. The glyph spans both
+ * rows beside the words instead of sitting above them, which halves the height
+ * without dropping anything — the same five facts, read left to right.
+ */
+.ahead-tile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 1px 10px;
+  padding: 10px 10px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.ahead-when,
+.ahead-read {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* NEITHER OF THESE MAY WRAP. The tiles are a fixed row on a board, and a
+   date that takes a second line does not just look wrong — it makes the tile
+   taller, which makes the weather widget taller, which is the one flexible
+   track in the left stack and has no height to spare. The width above is what
+   stops them needing to; this is what stops them being able to. */
+.ahead-day {
+  font-size: 15px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.ahead-date {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.ahead-glyph {
+  grid-row: 1 / span 2;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.ahead-temps {
+  display: flex;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 16px;
+}
+
+.ahead-precip {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--weather-cool);
+  min-height: 0;
+}
+
+/* ---- subway ----------------------------------------------------------- */
+
+.bullet {
+  flex: none;
+  position: relative;
+  display: inline-block;
+  border-radius: 50%;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.bullet-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  /* Sub-pixel exact, unlike grid centring, which rounds. */
+  transform: translate(-50%, -50%);
+  line-height: 1;
+}
+
+/* ---- status row: one line of height when everything is fine ---- */
+
+/* Beside the trains rather than above them: a 3x2 grid of bullets is the same
+   height as the tiles it now sits next to, so the widget lost a whole band. */
+.linestatus {
+  flex: none;
+}
+
+.subwaybody {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+/*
+ * THREE ROWS, TWO COLUMNS, filled downward: the lines picked first in
+ * the first column, everything else in the second. It was one centred wrapping
+ * row of pills, each carrying the word "Good" or a count in a triangle — six
+ * captions saying what six colours already said, and the width they took is now
+ * the trains' instead.
+ */
+.statusrow {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(3, auto);
+  grid-template-columns: repeat(2, auto);
+  justify-content: start;
+  gap: 3px 6px;
+}
+
+/* The li was taller than the pill inside it: `display: list-item` builds a line
+   box, and the widget's inherited 30px line-height made every row four pixels
+   bigger than the thing it contained. Three of those set the widget's height. */
+.statusrow li {
+  display: grid;
+  line-height: 0;
+}
+
+/* A ring around the bullet, and nothing else. Transparent while the line is
+   fine, red when it is not — the one state worth crossing a room for. */
+.statuspill {
+  display: inline-grid;
+  place-items: center;
+  /* Tight: three of these stacked must come to no more than the height of the
+     train tiles beside them, or the bullets set the widget's height and the
+     column pays for it. */
+  padding: 1px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background: transparent;
+  font-family: inherit;
+  cursor: default;
+}
+
+.statuspill.is-clear {
+  border-color: transparent;
+}
+
+.statuspill.is-alert {
+  border-color: #f0637a;
+  background: color-mix(in srgb, #f0637a 30%, transparent);
+  cursor: pointer;
+}
+
+/* Both halves scoped to is-alert on purpose. is-open used to be unqualified,
+   so any pill carrying that state went red — including a green one, which is
+   how a clear line ended up flashing red under the cursor. A pill with no
+   issues has no hover state at all now: nothing to open, nothing to show. */
+.statuspill.is-alert:hover,
+.statuspill.is-alert.is-open {
+  background: color-mix(in srgb, #f0637a 38%, var(--surface));
+}
+
+
+
+/* A warning triangle rather than another disc. The line bullet beside it is
+   already a coloured circle with a character in it, so a red circle read as a
+   second bullet; a triangle says "problem" by its outline alone, before the
+   colour or the number are read at all. Deliberately smaller than the 24px
+   bullet — the line is the subject, the count is the annotation. */
+.statusbadge {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 21px;
+  height: 21px;
+}
+
+/* Rounded corners come from stroking the same path the shape fills, with a
+   round line join. clip-path can cut the triangle but only with sharp points,
+   and three needle corners at 21px look like damage rather than a badge. */
+.statusbadge-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: #d92b45;
+  stroke: #d92b45;
+  stroke-width: 3.4;
+  stroke-linejoin: round;
+}
+
+.statusbadge-n {
+  position: relative;
+  /* A triangle carries its area low, so centring on the box centres it too
+     high. This is the optical middle, not the geometric one. */
+  margin-top: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+}
+
+.statusdetail {
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, #f0637a 30%, var(--line));
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+/* Portalled to <body>, because .panel is overflow:hidden and .widget-scroll is
+   overflow:auto — anything positioned inside a widget gets clipped by one of
+   them. Fixed rather than absolute so the coordinates LineStatus measures are
+   viewport coordinates, which is what makes the clamp arithmetic honest. */
+.statuscard {
+  position: fixed;
+  z-index: var(--z-popover);
+  width: min(360px, calc(100vw / var(--board-zoom) - 16px));
+  max-height: min(calc(50vh / var(--board-zoom)), 420px);
+  overflow: auto;
+  margin: 0;
+  background: var(--bg-raised);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.statusdetail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.statusdetail-seg {
+  color: var(--ink-faint);
+}
+
+.alerts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.alert {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--today);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+/* Planned work is context, not news, so it recedes. */
+.alert.is-planned {
+  border-left-color: var(--line-strong);
+}
+
+/* Contents, not the tile — see the note on .event.is-past above. */
+.alert.is-planned > * {
+  opacity: 0.72;
+}
+
+.alert-body {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.alert-type {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.alert-text {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+/* ---- next trains: one tile per line, one row ---- */
+
+.traintiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/*
+ * SIDEWAYS, not stacked: the line and its stop on the left, the three
+ * countdowns beside them. Stacking put a 28px bullet, a caption and three rows
+ * of times in a column four times over — the tallest thing in the stack for the
+ * least information in it.
+ */
+.traintile {
+  /* The badge and the times are ONE centred group, not a left column and a
+     right one — so the pair sits in the middle of the tile with even air either
+     side, however few arrivals there are. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  min-width: 0;
+  /* THREE ROWS' WORTH, WHETHER OR NOT ANYONE HAS THREE.
+     
+     Grid items stretch to their tallest sibling, so as long as one of the four
+     tiles had three arrivals they all matched and the row looked deliberate.
+     The moment none of them did — a quiet Sunday, a stalled feed, four tiles
+     reading "nothing soon" — the whole row shrank and took the widget's height
+     with it, which on a fixed stack shunts everything below it. The row is a
+     departure board: it should be the same size at 3am as at rush hour.
+     
+     Reserved here rather than on .traintile-times because that element does not
+     exist in the empty states, and those are exactly the ones that were
+     collapsing. 67px is a measured three-row stack — a 22px row, two 17px rows
+     and two 1px gaps — plus this tile's own 10px padding twice and its two 1px
+     borders. */
+  min-height: calc(67px + 2 * 10px + 2 * 1px);
+}
+
+.traintile-head {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.traintile-place {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.traintile-times {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  /* Stacked, not in a row: three arrivals read down a column the way a
+     departure board writes them, and the tile is only ~180px wide.
+     
+     The BLOCK is centred in the space left over beside the badge, and the times
+     inside it are right-aligned to each other — so the numbers line up on their
+     own edge without being shoved against the tile's. */
+  display: grid;
+  gap: 1px;
+  justify-items: end;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.traintile-times li {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  color: var(--ink-soft);
+  font-size: 15px;
+}
+
+/* The one you can actually still catch. */
+.traintile-times li.is-next {
+  color: var(--ink);
+}
+
+.traintile-times li.is-next .traintile-min {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.traintile-min {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.traintile-unit {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.traintile-none {
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.25;
+  color: var(--ink-faint);
+}
+
+/* --------------------------------------------------------------- stackpair */
+/* Two widgets sharing one tab — live streams above the video list. Their two widget shells have to stop behaving like panels of
+   their own: .widget is a full-height grid with its own scroller, and two of
+   those nested inside a third gives you two scrollbars and neither one where you
+   want it. Flattened, they read as two sections of one page, each keeping its
+   title as its heading. */
+
+.stackpair > .widget-scroll > .widget {
+  display: block;
+  height: auto;
+  min-height: 0;
+}
+
+.stackpair > .widget-scroll > .widget > .widget-head {
+  padding: 0 0 10px;
+}
+
+/* The head's rule needs air under it before the first row — flush against it,
+   the first item read as part of the heading rather than the start of its own
+   section. */
+.stackpair > .widget-scroll > .widget > .widget-scroll {
+  overflow: visible;
+  padding: 16px 0 0;
+}
+
+/* A rule between the two, the same way the two GA sites are divided. */
+.stackpair > .widget-scroll > .widget + .widget {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+/* ---------------------------------------------------------------- stackrow */
+/* Two widgets ACROSS one row of the left stack — what is playing beside what the
+   score is. The horizontal twin of .stackpair above, and it exists for the same
+   reason: two .widget shells nested inside a third would each be a full-height
+   grid with a scroller of its own, and neither scrollbar would be anywhere you
+   want it.
+
+   The wrapper is itself a .widget, which is not decoration. That is what keeps
+   the stack's own `> .widget + .widget` rule drawing the rules above and below
+   this row, and what keeps the flexible track on weather rather than here. */
+.panel.is-stack > .widget.stackrow {
+  display: grid;
+  /* 40/60, and it used to be the other way round. Now Playing is one track —
+     art, a title stack and a progress bar — and it reads fine narrow; what is
+     beside it is now five fixtures rather than one, and every one of them ends
+     in an opponent's name that has to fit on a line. The wider half goes to
+     whichever side has more to say, and that is no longer the music. */
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+}
+
+/* A column, so the label can stay put while the content below it takes the
+   height. min-width:0 is load-bearing: a grid item's min-width is auto, so
+   without it a long track title refuses to ellipsis and widens the whole
+   column. */
+.stackrow > .widget {
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Restated because the stack's own version of this rule is a direct-child
+   selector, and these scrollers are one level deeper than it can see.
+
+   Both halves stretch to the row, and the two rarely want the same height: a
+   score is a competition line, two team rows and a clock, where a track is
+   album art, a title stack and a progress bar. So the scroller takes the
+   leftover height and centres what is in it, rather than letting the shorter
+   side hang off its label with a hundred pixels of nothing underneath. The
+   LABEL stays outside that centring on purpose — it is the panel's section
+   heading, and two headings that do not sit on the same line read as a
+   mistake. */
+.stackrow > .widget > .widget-scroll {
+  overflow: visible;
+  padding: 20px 18px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* The divider runs the other way in here. Both halves stretch to the row's
+   height, so the line is full height even when one side is shorter — which is
+   most of the time. No gap: two lots of 16px padding already give it air. */
+.stackrow > .widget + .widget {
+  border-left: 1px solid var(--line);
+}
+
+/* Water beside Claude usage. Even halves, unlike the 2fr/3fr default above —
+   that ratio was tuned for album art beside five fixtures, where one side had
+   far more to say than the other. These two do not: a bottle and three bars are
+   both fixed-height graphics that simply take the width they are given, so
+   there is nothing to weight the split towards and a seam down the middle is
+   the quietest thing to look at. Settled at 3440x1440, the only width this
+   board is ever seen at. */
+/* Selector matched to the rule it is overriding, NOT to the element. The
+   default above is `.panel.is-stack > .widget.stackrow` — four classes — so a
+   tidier `.stackrow.is-water` loses on specificity and does nothing at all,
+   silently, while the row keeps rendering at 2fr/3fr and looking plausible. */
+.panel.is-stack > .widget.stackrow.is-water {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+/* ------------------------------------------------------------- usagebars */
+/* How much of the Claude subscription is left: one row per rate-limit window.
+   A four-column grid rather than four flex children, so the bars line up with
+   each other down the column — the percentages are the thing being compared,
+   and ragged track starts would defeat that at a glance. The track column is
+   the only elastic one. */
+.usagebars {
+  display: grid;
+  grid-template-columns: auto auto minmax(40px, 1fr) auto;
+  align-items: center;
+  gap: 7px 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.usagebar {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+}
+
+.usagebar-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+/* Tabular so 2%, 41% and 91% occupy the same width and the tracks below each
+   other start on the same pixel. */
+.usagebar-pct {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--ink);
+}
+
+.usagebar-track {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  overflow: hidden;
+}
+
+/* THE ONLY COLOUR IN THE WIDGET, and it is the whole alerting mechanism —
+   This is a gauge, not an alarm, so there is no tab dot and no
+   takeover. Grey until something is actually worth noticing, the same rule the
+   vitals body follows: a colour anywhere here means a limit is close. */
+.usagebar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--ink) 42%, transparent);
+  transition: width 400ms ease;
+}
+
+.usagebar[data-level="warn"] .usagebar-fill {
+  background: var(--warn);
+}
+
+.usagebar[data-level="crit"] .usagebar-fill {
+  background: var(--crit);
+}
+
+.usagebar[data-level="crit"] .usagebar-pct {
+  color: var(--crit);
+}
+
+.usagebar-reset {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* ------------------------------------------------------- alerts prompt */
+/* The one click that arms the chime and the notifications. Bottom-left, which
+   is the only corner nothing else on this board uses — the player parks bottom
+   right, the takeover covers everything, and the left stack runs up the side
+   above it. Deliberately quiet: it is a suggestion, not an alarm, and it takes
+   itself away for good once answered. */
+.alertsprompt {
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  z-index: var(--z-popover);
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+}
+
+.alertsprompt-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.alertsprompt-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alertsprompt-go,
+.alertsprompt-x {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: calc(var(--radius) - 2px);
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.alertsprompt-go {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.alertsprompt-x {
+  color: var(--ink-faint);
+}
+
+/* -------------------------------------------------------------- catshelf */
+/* A shelf under the bars with a cat on it, saying what Claude is doing.
+   Pixel art adapted from the MIT `pixel-buddy` pack — see lib/claude-cat.ts for
+   the provenance and for why it is not the nicer-looking clawd set.
+
+   THE STAGE HAS TO BE ITS OWN BOX. The cat is absolutely positioned so CSS can
+   walk it along, which takes it out of flow, so without a stage of a fixed
+   height the shelf would collapse onto the bars. 20px is the sprite's own
+   height and no more. */
+.catshelf {
+  /* ONE size, derived from everywhere else. The sprite box, the stage height,
+     how far it may walk before turning, and the strip's own frame width are all
+     this number — get it out of sync in any one of them and the animation lands
+     between frames. */
+  --cat-size: 26px;
+  margin-top: 14px;
+}
+
+.catshelf-stage {
+  position: relative;
+  height: var(--cat-size);
+}
+
+.catwalk {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: var(--cat-size);
+  height: var(--cat-size);
+}
+
+/* THE PET. One strip, one background-position animation, all on the compositor.
+
+   PIXELS, NOT PERCENTAGES, and this is the whole trick. A percentage in
+   background-position resolves against (container width - image width), not
+   against the container — so with a strip eight times wider than its box,
+   -100% is not one frame over, it is eight times the NEGATIVE overhang, and the
+   sprite flies off into empty space. The first version did that and showed what
+   looked like one frame flickering. In pixels the arithmetic is what it appears
+   to be: frame i sits at -i * --cat-size, so a steps(n) run from 0 to
+   -n * --cat-size lands exactly on each frame in turn.
+
+   Each state names its own strip and its own frame count below. The count is
+   written out rather than passed through a variable because steps() will not
+   reliably take a var(). */
+.cat {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-repeat: no-repeat;
+  background-size: calc(var(--cat-frames) * var(--cat-size)) var(--cat-size);
+  background-position: 0 0;
+  /* Scaled from 64px source frames: keep the pixels square and hard. */
+  image-rendering: pixelated;
+}
+
+@keyframes cat-play {
+  to {
+    background-position-x: calc(-1 * var(--cat-frames) * var(--cat-size));
+  }
+}
+
+/* Pacing the shelf, eight frames at ~11fps: fast enough to read as walking from
+   across the room, slow enough not to look panicked. */
+.catshelf[data-state="working"] .cat {
+  --cat-frames: 8;
+  background-image: url("/pets/clawd-walk.png");
+  animation: cat-play 720ms steps(8) infinite;
+}
+
+/* A wave, and slower on purpose — at walking speed a wave reads as flapping. */
+.catshelf[data-state="waiting"] .cat {
+  --cat-frames: 4;
+  background-image: url("/pets/clawd-wave.png");
+  animation: cat-play 900ms steps(4) infinite;
+}
+
+/* Asleep. Barely moving: this is breathing, not animation. */
+.catshelf[data-state="chilling"] .cat {
+  --cat-frames: 8;
+  background-image: url("/pets/clawd-sleep.png");
+  animation: cat-play 3200ms steps(8) infinite;
+}
+
+/* THE LINE HE STANDS ON. Full width, and drawn under the stage rather than as
+   a border on it so the cat's feet sit ON the rule instead of above a gap. */
+.catshelf-line {
+  height: 1px;
+  background: var(--line);
+}
+
+.catshelf-say {
+  margin: 5px 0 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ONLY WHILE WORKING DOES HE MOVE, and that is the entire signal: motion caught
+   in peripheral vision means Claude is busy, stillness means it is not. A cat
+   that paced while idle would say nothing at all.
+
+   THE TRAVERSAL AND THE FACING ARE NOT DECLARED HERE ANY MORE. They were two
+   CSS animations on .catwalk, and a CSS animation cannot do the one thing they
+   now have to: it always runs its keyframes from the first one. So every time
+   it stopped it snapped back to the left edge, and every time it started again
+   it set off from there rather than from wherever it had been standing — its
+   position could not survive a change of state.
+
+   They are Web Animations API animations instead, built once and thereafter
+   only paused and played: pausing holds the exact value it is on, and playing
+   carries on from it. See Shelf in ClaudeUsageWidget.tsx, which also holds the
+   reduced-motion check that used to live down here. Only the frame cycling is
+   still declarative, because a frame loop never needs resuming anywhere. */
+
+/* Waiting on you are the one state worth a colour, and it gets the same amber
+   the bars use rather than a new one. Not a pulse: this can be true for hours,
+   and anything blinking that long stops being read. */
+.catshelf[data-state="waiting"] .catshelf-say {
+  color: var(--warn);
+}
+
+/* Why the bars above may be stale. Only appears once something has gone wrong
+   AFTER a good reading — a 429, or the agent losing the network. */
+.usagenote {
+  margin: 9px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------------ score */
+/* ONE CELL PER TEAM, NOT ONE CARD, because "is anything on right now" and
+   "when do they next play" are the same glance and used to need two.
+
+   The whole thing has to fit beside a track — see the height constraint in
+   LiveScoresWidget — so a cell is three tight lines and the type steps DOWN
+   from the club name: the name is what you find the cell by, the fixture and
+   the kickoff are what you read once you have found it. */
+/*
+ * Across the column, one per team. It was a 2x2 with a wide row underneath,
+ * back when this shared a row with Now Playing and
+ * had half a column to work in; a full-width band of five is the same five
+ * facts in less height, and it lines up with the two rows of five above it.
+ */
+.sgrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sgrid-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  /* Load-bearing, twice over: a grid item's min-width is auto, so without it
+     "at Manchester United" refuses to ellipsis and widens its whole column. */
+  min-width: 0;
+}
+
+/* The bullet between a tournament and its date, one step quieter than either,
+   the way .stack-meta sits under its own label. Same font as the text on both
+   sides of it: it is a separator, not a third fact. */
+.sgrid-dot {
+  color: var(--ink-faint);
+}
+
+.sgrid-team {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  min-width: 0;
+}
+
+.sgrid-mark {
+  flex: none;
+}
+
+.sgrid-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The fixture. One line, always — a wrapped opponent is the one thing that
+   would push this half past Now Playing. */
+.sgrid-line {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sgrid-line.is-empty {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+/* Tabular so two cells side by side leave their digits on the same axis. */
+.sgrid-score {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.sgrid-abbr {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+}
+
+.sgrid-num {
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.sgrid-dash {
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+/* The kickoff, or ESPN's own per-sport clock string: "34'", "7:12 - 3rd",
+   "Halftime", "FT". */
+.sgrid-when {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+/* The one colour in here, and it means the game has started. Everything else
+   stays grey so that a coloured line always means the same thing — the rule the
+   PC panel's traffic light follows too. */
+.sgrid-when.is-on {
+  color: var(--today);
+}
+
+/*
+ * A LIVE GAME PULSES GREEN, the same green and the same two-second breath as a
+ * fresh video and a tab with something waiting on it. On this board that pair
+ * means one thing — "this is happening, and you have not looked at it" — and a
+ * kickoff is exactly that. The club's own accent stays as the left rule, so the
+ * tile still says WHOSE game without reading the name.
+ *
+ * It replaces the tile's border rather than adding to it, so nothing shifts by
+ * a pixel at kickoff, and it stops on hover like every other pulse here.
+ */
+.sgrid-cell.is-on {
+  border-color: color-mix(in srgb, var(--voice-live) 45%, transparent);
+  border-left: 3px solid var(--sgrid-accent, var(--today));
+  padding-left: 8px;
+  background: color-mix(in srgb, var(--voice-live) 8%, var(--surface));
+  animation: alert-pulse 2s ease-in-out infinite;
+}
+
+.sgrid-cell.is-on:hover {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sgrid-cell.is-on {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------ vitals */
+/* A status strip over detail bands — the shape every host dashboard converges
+   on. The strip answers "is it fine" from across the room; the bands answer
+   "what exactly".
+
+   COLOUR IS A THRESHOLD, NOT A GRADIENT, and green appears in the strip and
+   nowhere else. Everything below stays grey until it actually crosses a limit,
+   so a colour anywhere in the body means something is wrong — which is the only
+   way a status colour keeps its meaning on a screen you look at all day. */
+
+/* --- the strip ----------------------------------------------------------- */
+
+.vstrip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+}
+
+/* The board's existing status-pill shape (see .statuspill on the subway
+   widget): a tinted fill, a stronger border of the same hue, light ink. */
+.vpill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.vpill-shape {
+  display: flex;
+  flex: none;
+}
+
+.vpill-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vpill.is-ok {
+  background: color-mix(in srgb, var(--ok) 16%, var(--surface));
+  border-color: color-mix(in srgb, var(--ok) 38%, transparent);
+  color: color-mix(in srgb, var(--ok) 55%, var(--ink));
+}
+
+.vpill.is-warn {
+  background: color-mix(in srgb, var(--warn) 18%, var(--surface));
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  color: color-mix(in srgb, var(--warn) 60%, var(--ink));
+}
+
+.vpill.is-crit {
+  background: color-mix(in srgb, var(--crit) 24%, var(--surface));
+  border-color: color-mix(in srgb, var(--crit) 55%, transparent);
+  color: color-mix(in srgb, var(--crit) 45%, var(--ink));
+  /* The one animated thing in here, and only at critical. --pulse-hue
+     re-points the shared alert-pulse keyframe away from its green default. */
+  --pulse-hue: var(--crit);
+  animation: alert-pulse 2s ease-in-out infinite;
+}
+
+.vpill:hover {
+  animation: none;
+}
+
+/* --- the rails ----------------------------------------------------------- */
+
+.vrail + .vrail,
+.vrail + .vsection,
+.vsection + .vsection {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.vrail-head,
+.vsection-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+/* Dimmed, always. The icon says which metric; the colour says how it is doing,
+   and one channel does not get to carry both. */
+.vrail-icon,
+.vsection-icon {
+  display: flex;
+  flex: none;
+  color: var(--ink-faint);
+}
+
+.vrail-label,
+.vsection-head {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.vrail-label {
+  margin: 0;
+}
+
+.vrail-sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-faint);
+}
+
+.vrail-body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+/* Tabular, deliberately against the usual advice for a display-size number: it
+   changes every two seconds, and proportional digits make the whole rail twitch
+   sideways as the value moves. */
+.vrail-big {
+  margin: 0;
+  min-width: 108px;
+  font-family: var(--font-mono);
+  font-size: 34px;
+  font-weight: 650;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.vrail-unit {
+  margin-left: 2px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink-faint);
+}
+
+/* The number takes the colour only once the rail is in a state. */
+.vrail.is-warn .vrail-big {
+  color: var(--warn);
+}
+
+.vrail.is-crit .vrail-big {
+  color: var(--crit);
+}
+
+.vrail-right {
+  min-width: 0;
+}
+
+.vrail-detail {
+  margin: 7px 0 0;
+  font-size: 13px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- the meter ----------------------------------------------------------- */
+
+/* Capped, because a load meter stretched across 600px of ultrawide reads as a
+   rule with a coloured end rather than as a gauge — the eye cannot judge a
+   proportion it has to scan. Roughly 26 cells at this width, which is the
+   density every segmented meter converges on. */
+.vmeter {
+  position: relative;
+  width: 100%;
+  max-width: 340px;
+  height: 12px;
+  /* The TRACK is segmented too, not just the fill. That is the whole point of
+     the form: the unlit cells are how you read the headroom left. */
+  background: repeating-linear-gradient(
+    to right,
+    var(--surface-sunken) 0 10px,
+    transparent 10px 13px
+  );
+}
+
+/* Segmented, not solid. The unlit cells are the information: they show how much
+   headroom is left, so distance-to-limit is readable without decoding a hue.
+   The mask is a repeating gradient over the fill rather than 20 elements. */
+.vmeter-fill {
+  display: block;
+  height: 100%;
+  background: var(--ink-soft);
+  -webkit-mask-image: repeating-linear-gradient(to right, #000 0 10px, transparent 10px 13px);
+  mask-image: repeating-linear-gradient(to right, #000 0 10px, transparent 10px 13px);
+  /* Eased, not linear: at a 2s poll a linear tween reads as a series of stills.
+     This is the board's house curve now — it had none before. */
+  transition: width 350ms cubic-bezier(0.4, 0, 0.2, 1), background 200ms linear;
+}
+
+.vmeter-fill.is-warn {
+  background: var(--warn);
+}
+
+.vmeter-fill.is-crit {
+  background: var(--crit);
+}
+
+/* Where amber and red begin, as hairlines on the track. The same fact as the
+   colour, in a channel that needs no colour vision at all. */
+/* Where amber and red begin. Sits proud of the track so it reads as a mark on a
+   scale rather than as one more lit cell. */
+.vmeter-tick {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  pointer-events: none;
+}
+
+.vmeter-tick.is-warn {
+  background: color-mix(in srgb, var(--warn) 55%, transparent);
+}
+
+.vmeter-tick.is-crit {
+  background: color-mix(in srgb, var(--crit) 60%, transparent);
+}
+
+/* --- sparkline and ribbon ------------------------------------------------ */
+
+/* `color` is what the canvas reads for its stroke — see draw() in the widget. */
+.vspark {
+  display: block;
+  width: 100%;
+  height: 32px;
+  margin-top: 10px;
+  color: var(--ink-faint);
+}
+
+/* One cell per minute for the last hour, each the worst state inside it. The
+   spark says what it is doing; this says whether it has been fine all evening. */
+.vribbon {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 1px;
+  height: 4px;
+  margin-top: 5px;
+}
+
+.vribbon-cell {
+  border-radius: 1px;
+  background: var(--line-strong);
+}
+
+/* Before the agent had been watched for an hour. Dimmer than a healthy minute,
+   because "we were not looking" is not the same claim as "it was fine". */
+.vribbon-cell.is-empty {
+  background: var(--line);
+}
+
+.vribbon-cell.is-warn {
+  background: var(--warn);
+}
+
+.vribbon-cell.is-crit {
+  background: var(--crit);
+}
+
+/* --- drives -------------------------------------------------------------- */
+
+.vdrives,
+.vfans,
+.vprocs {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Name, instances, CPU, meter, RAM. Grouped by executable, so the count is what
+   turns thirty Chrome processes back into one line about Chrome. */
+.vproc {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5ch minmax(90px, 160px) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+}
+
+.vproc + .vproc {
+  border-top: 1px solid var(--line);
+}
+
+.vproc-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 15px;
+}
+
+.vproc-name b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-weight: 650;
+}
+
+.vproc-count {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.vproc-cpu,
+.vproc-mem {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Letter, model, temp, meter, free. One row per physical drive — the sensors
+   and Windows describe the same hardware and used to render it twice. */
+.vdrive {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3ch minmax(120px, 200px) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+}
+
+.vdrive + .vdrive {
+  border-top: 1px solid var(--line);
+}
+
+.vdrive-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 15px;
+}
+
+.vdrive-name b {
+  font-family: var(--font-mono);
+  font-weight: 650;
+}
+
+.vdrive-model {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.vdrive-temp,
+.vdrive-free {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.vdrive-temp.is-warn {
+  color: var(--warn);
+}
+
+.vdrive-temp.is-crit {
+  color: var(--crit);
+}
+
+.vdrive.is-crit .vdrive-free {
+  color: var(--crit);
+}
+
+.vdrive.is-warn .vdrive-free {
+  color: var(--warn);
+}
+
+/* --- fans ---------------------------------------------------------------- */
+
+.vfans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+  gap: 8px;
+}
+
+.vfan {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.vfan-rpm {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+}
+
+.vfan-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.vnote {
+  margin: 18px 0 0;
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+/* The three code spans in this panel were the only ones on the board with no
+   rule at all, so they rendered at UA-default monospace against a 21px body. */
+.widget code {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  color: var(--ink-soft);
+}
+
+
+/* ----------------------------------------------------------------- planner */
+/* The shell's usual two rows: head, then the agenda. It had a third — the
+   capture box — for as long as the to-dos lived here. They are in Notes / To-Do
+   now, and so is the box. */
+
+.todoadd {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.todoadd-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+/* Deliberately the same field as .watchpaste-input, the board's only other text
+   input — one text field on a board should not look like two. */
+.todoadd-input {
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 17px;
+}
+
+.todoadd-input::placeholder {
+  color: var(--ink-faint);
+}
+
+.todoadd-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.todoadd-go {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.todoadd-go:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.todoadd-go:disabled,
+.todoadd-input:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.todonote {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--ink-faint);
+}
+
+.todonote.is-error {
+  color: var(--today);
+}
+
+/* Tiles, not rows: a box, a line of text and two controls crammed onto one line
+   read as a table. Same two-across track as .videos and .twlives, capped the
+   same way — the 48% is what forbids a third column on an ultrawide, the 220px
+   is what collapses it to one when the panel is narrow. */
+.todos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(max(220px, 48%), 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.todo {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: start;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  /* The fade a ticked task leaves by. Both properties, so nothing snaps when
+     .is-done lands — see TodoList's FADE_MS, which must stay longer than this. */
+  transition: opacity 380ms ease, transform 380ms ease;
+}
+
+/* The tick box. A native checkbox, accent-coloured rather than redrawn: a fake
+   one built out of a span would have to re-earn focus rings, the space bar and
+   the screen reader, and none of that is worth a rounder corner. */
+.todo-box {
+  width: 19px;
+  height: 19px;
+  margin: 1px 2px 0 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.todo-box:disabled {
+  cursor: default;
+}
+
+/* The ghost tile's box is a <span>: something has to hold the column open while
+   the real item is still being written, and it must not look clickable. */
+span.todo-box {
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  cursor: default;
+}
+
+/* Ticked. The strike goes on first and the whole tile follows it out; the row is
+   still in the list at this point, so it holds its place until the server render
+   drops it and the grid closes up once rather than twice. */
+.todo.is-done {
+  opacity: 0;
+  transform: translateX(10px);
+  pointer-events: none;
+}
+
+.todo.is-done .todo-text {
+  text-decoration: line-through;
+}
+
+/* The tile still goes; it just goes at once. The write is on a timer in
+   TodoList, not on transitionend, so nothing is waiting on this. */
+@media (prefers-reduced-motion: reduce) {
+  .todo {
+    transition: none;
+  }
+
+  .todo.is-done {
+    transform: none;
+  }
+}
+
+/* --today, because it already means "this one, now" everywhere else on the
+   board — and it is not spoken for anywhere in the right panel. */
+.todo.is-flagged {
+  border-color: color-mix(in srgb, var(--today) 55%, transparent);
+  background: color-mix(in srgb, var(--today) 8%, var(--surface));
+}
+
+/* Both a click waiting on the server and a to-do that is not on disk yet. */
+/* Contents, not the tile — see the note on .event.is-past above. */
+.todo.is-pending > * {
+  opacity: 0.5;
+}
+
+.todo-text {
+  font-size: 17px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.todo-btn {
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--ink-faint);
+  font-family: inherit;
+  font-size: 17px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.todo-btn:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.todo-btn:disabled {
+  cursor: default;
+}
+
+.todo.is-flagged .todo-flag {
+  color: var(--today);
+}
+
+.todo-del:hover:not(:disabled) {
+  color: var(--today);
+}
+
+/* ---------------------------------------------------------------- discord */
+/* Occupied channels are the only content: no server heading, no channel names,
+   no tally of the rooms nobody is in. Either there are faces or there is one
+   sentence saying there are not. */
+
+.dcchannel {
+  /* The head and the roster sit side by side, so the whole channel is one row
+     of faces rather than a caption above a list. */
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  /*
+   * THE SAME HEIGHT WHETHER ANYONE IS IN THERE OR NOT.
+   *
+   * A live channel is as tall as a person pill — 24px avatar plus its 4px of
+   * padding either side — and the empty box was only as tall as a line of text,
+   * so the whole column jumped 12px every time somebody joined or left the
+   * call. Everything below Discord in the stack moved with it.
+   *
+   * 48 = 32 (the pill) + 14 (this padding) + 2 (this border). If the avatar
+   * size changes, this changes with it.
+   */
+  min-height: 48px;
+}
+
+.dcchannel + .dcchannel {
+  margin-top: 8px;
+}
+
+/* --- the two states a busy channel can be in ---------------------------- */
+
+.dcchannel-state {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Someone is in there and you are not. */
+.dcchannel.is-calling {
+  border-color: var(--voice-live);
+  background: color-mix(in srgb, var(--voice-live) 10%, var(--surface));
+  animation: alert-pulse 2s ease-in-out infinite;
+}
+
+.dcchannel.is-calling .dcchannel-state,
+.dcchannel.is-calling .dcchannel-n {
+  color: var(--voice-live);
+}
+
+/* Nobody is in there. Same box, same height, drawn as an outline — so the
+   panel does not change shape the moment somebody joins. */
+.dcchannel.is-empty {
+  border-style: dashed;
+  border-color: var(--line-strong);
+  background: transparent;
+}
+
+.dcchannel.is-empty .dcchannel-state,
+.dcempty-note {
+  color: var(--ink-faint);
+}
+
+.dcempty-note {
+  font-size: 14px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* you are already in the call, so there is nothing to go and do. */
+.dcchannel.is-mine {
+  border-color: var(--voice-mine);
+  background: color-mix(in srgb, var(--voice-mine) 10%, var(--surface));
+}
+
+.dcchannel.is-mine .dcchannel-state,
+.dcchannel.is-mine .dcchannel-n {
+  color: var(--voice-mine);
+}
+
+/* One pulse, four callers: a voice channel with people in it, a video posted in
+   the last half hour, the tab above either of them, and a critical reading on
+   the PC panel. Hovering any of them stops it — the animation is there to catch
+   your eye across the room, and once you have pointed at the thing it has done
+   its job.
+
+   The hue is a variable with the green as its default, so the three original
+   callers are untouched and the PC panel can borrow the same keyframe in red
+   rather than owning a second one. */
+@keyframes alert-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--pulse-hue, var(--voice-live)) 42%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--pulse-hue, var(--voice-live)) 0%, transparent);
+  }
+}
+
+/* A dashboard that lives on a second monitor should still be usable by someone who cannot
+   take a pulsing box in the corner of their eye. The colour carries the state on
+   its own; the animation is the part that is optional. */
+@media (prefers-reduced-motion: reduce) {
+  .video-item.is-fresh .video,
+  .panel-tab.has-alert,
+  /* The tint and the border still say "new" without it. */
+  .jobtile.is-new {
+    animation: none;
+  }
+
+  .dcchannel.is-calling {
+    animation: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--voice-live) 30%, transparent);
+  }
+
+  /* The state still has to read, so the ring stays and only the movement goes —
+     the same trade the voice channel above makes. */
+  .vpill.is-crit {
+    animation: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--crit) 34%, transparent);
+  }
+}
+
+.dcchannel-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+}
+
+.dcchannel-glyph {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.dcchannel-n {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.dcpeople {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  flex: 1;
+  /* One row, always. Wrapping put one name per line as soon as the panel got
+     narrow, which is the thing that made a busy channel unreadable at a glance. */
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.dcperson {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  font-size: 14px;
+}
+
+.dcavatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+
+.dcavatar.is-blank {
+  display: grid;
+  place-items: center;
+  background: var(--line-strong);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.dcperson-name {
+  color: var(--ink);
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dcperson-flag {
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+/* ------------------------------------------------------------ now playing */
+/* --np-accent is set from the cover art at runtime; the board's own accent is
+   the fallback for a missing or unreadable image. */
+
+/*
+ * The cover on the left, everything else stacked to the right of it.
+ *
+ * It was a 96px thumbnail with the title beside it and the progress bar and the
+ * EQ underneath, which was the right shape when this widget had 40% of a shared
+ * row. It has the whole column now, and a cover is the one thing on this board
+ * worth spending width on — 168px, and the three things that used to sit under
+ * it are one stack alongside instead.
+ */
+.np {
+  --np-accent: var(--accent);
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 16px;
+  /* START, not centre: the top of the cover and the top of the song title are
+     the two things the eye lines up on, and centring the two columns against
+     each other left them a few pixels out. */
+  align-items: start;
+}
+
+.np-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.np-art {
+  width: 168px;
+  height: 168px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface-sunken);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
+}
+
+.np-art.is-blank {
+  display: grid;
+  place-items: center;
+  font-size: 56px;
+  color: var(--ink-faint);
+  box-shadow: none;
+}
+
+.np-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.np-title,
+.np-artist,
+.np-album {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.np-title {
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.np-artist {
+  font-size: 17px;
+  color: var(--ink-soft);
+}
+
+.np-album {
+  font-size: 15px;
+  color: var(--ink-faint);
+}
+
+.np-state {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+.np-state.is-playing {
+  color: var(--np-accent);
+}
+
+.np-progress {
+  display: grid;
+  /* Transport, elapsed, bar, duration. The three buttons are one child so this
+     row's gap does not also space them out. */
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.np-transport {
+  display: flex;
+  gap: 6px;
+}
+
+/* Buttons, at the same size and with the same always-there border as the mixer
+   controls in the Quick row — the two rows are the board's only real controls
+   and they should look like one idea. */
+.np-tbtn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+
+/* Filled shapes, not outlines — a play triangle drawn as a stroke reads as a
+   pennant. Same choice as .watchbtn's icons. */
+.np-tbtn svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.np-tbtn:hover {
+  color: var(--np-accent);
+  border-color: var(--line-strong);
+  background: var(--surface-sunken);
+}
+
+.np-time {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  /* Wide enough for "12:34", so the bar's ends do not shuffle when the clock
+     goes from blank to a real time on a track change. */
+  min-width: 5ch;
+}
+
+/* Named, not positional. This used to be :first-child, which stopped being the
+   elapsed clock the moment the transport buttons took that slot — and would have
+   failed by silently un-aligning a number rather than by erroring. */
+.np-progress > .np-elapsed {
+  text-align: right;
+}
+
+.np-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.np-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--np-accent);
+}
+
+/* Half the 72px it started at. The canvas re-reads clientHeight every frame and
+   scales its own bars to it (barHeight = value * height), so this is the only
+   number involved — there is no matching constant in the component to keep in
+   step. Height is what the stack row is short of, and 36px of meter still reads
+   as a meter from across the room. */
+.np-eq {
+  display: block;
+  width: 100%;
+  height: 40px;
+}
+
+/* ----------------------------------------------------------------- twitch */
+/* Deliberately the same object as a .video tile: preview anchored left at the
+   same 112px, body stacked to its right, same grid rule on the list. Two things
+   you might watch should not need two different ways of looking.
+
+   Nothing here pulses. A video you have not watched is waiting for you; a stream
+   that started ten minutes ago is not. */
+
+.twlives {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(max(290px, 48%), 1fr));
+  gap: 10px;
+}
+
+.twlive {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  height: var(--tile-h);
+  overflow: hidden;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-decoration: none;
+  color: inherit;
+}
+
+.twlive:hover {
+  border-color: var(--line-strong);
+}
+
+/* The preview and the face are one unit: the frame is a moment of gameplay and
+   often unrecognisable, so the avatar sits on its corner saying whose it is. */
+.twlive-shot {
+  position: relative;
+  display: block;
+  width: 112px;
+  height: 63px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.twlive-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  display: block;
+}
+
+.twlive-avatar {
+  position: absolute;
+  left: -4px;
+  bottom: -4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-sunken);
+  /* The ring is the panel's own colour, not a highlight — it cuts the face out
+     of the frame behind it so a bright preview cannot swallow it. */
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.twlive-avatar.is-blank {
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink-soft);
+}
+
+.twlive-body {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.twlive-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.twlive-name {
+  font-size: 16px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.twlive-viewers {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+/* Drawn, not typed. An emoji would render in the text colour on one platform and
+   in full colour on the next, and next to a number this has to read as a unit. */
+.twlive-eye {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  /* Baseline-aligned text with an inline svg sits half a pixel high otherwise. */
+  transform: translateY(0.5px);
+}
+
+.twlive-game {
+  font-size: 15px;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Two lines then ellipsis, the same clamp .video-title uses. */
+.twlive-title {
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--ink-faint);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+
+/* ---- the Watch panel --------------------------------------------------- */
+
+/* Three rows rather than the usual two: head, the stage the player sits on, and
+   the lists. Only the last of those scrolls. */
+/* Head, the rows of things to pick from, then the player taking everything that
+   is left. THE PLAYER IS THE ELASTIC ONE now: the rows are sized by their own
+   content — one tile tall each and no more — and every remaining pixel goes to
+   the picture. It used to be the other way round, which left a band of nothing
+   between the last row and a player that could not grow into it. */
+.watchwidget {
+  grid-template-rows: auto minmax(0, auto) minmax(220px, 1fr);
+}
+
+.watchrails {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  /* The only line between the choosing and the watching. It sits out here
+     rather than on the stage so it survives the player covering the stage. */
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.watchrail {
+  min-width: 0;
+}
+
+.watchrail .stack-title {
+  padding: 12px 16px 6px;
+}
+
+/* The link goes to the far end of the row's title, the way the widget heads put
+   theirs — it is an exit, not a heading. */
+.watchrail .stack-title .headlink {
+  margin-left: auto;
+}
+
+/*
+ * ONE ROW PER SOURCE, HOWEVER MANY THERE ARE.
+ *
+ * A single tile takes the whole panel; two share it; and once there are enough
+ * that they would go under their readable width they stop shrinking and the row
+ * scrolls sideways instead. That is the whole of `minmax(<floor>, 1fr)` — the
+ * floor is the width these tiles were designed at, and 1fr is what lets them
+ * grow when there is room going spare.
+ */
+.rail {
+  min-width: 0;
+  padding: 2px 16px 12px;
+  overflow: auto hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.rail > .videos,
+.rail > .twlives {
+  display: grid;
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(290px, 1fr);
+  gap: 10px;
+}
+
+/*
+ * The row runs off the edge rather than being guillotined by it. A tile cut dead
+ * at the panel border reads as something broken; the same tile dissolving reads
+ * as "there is more this way", which is what is actually true.
+ *
+ * Only on the end that has something past it — Rail.tsx works that out, because
+ * CSS cannot. A row that fits keeps both edges crisp, which matters most for the
+ * single stream tile that fills the whole width on its own.
+ */
+.rail.has-more {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 80px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 80px), transparent);
+}
+
+.rail.has-back {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 80px);
+  mask-image: linear-gradient(to right, transparent, #000 80px);
+}
+
+.rail.has-back.has-more {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 80px,
+    #000 calc(100% - 80px),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 80px,
+    #000 calc(100% - 80px),
+    transparent
+  );
+}
+
+/* A row's empty state is a line, not a panel — .empty's usual 40px of padding
+   is sized for a whole widget with nothing in it. */
+.watchrail .empty {
+  margin: 0 16px 12px;
+  padding: 16px 18px;
+  text-align: left;
+}
+
+/*
+ * An empty box whose only job is to have a position and a size. WatchPlayer
+ * measures it and covers it; nothing is ever drawn here while something is
+ * playing.
+ *
+ * IT TAKES THE WHOLE OF WHAT IS LEFT, corner to corner, with no frame around it.
+ * The box this used to be was sized so the picture came out at exactly 16:9,
+ * which was right while it sat under the rows as an object on the panel — but as
+ * the last thing in the panel it left a band of dead space above it that nothing
+ * could use.
+ *
+ * The trade is honest and worth writing down: a panel is not 16:9, so a 16:9
+ * picture inside it has bars. Filling the space means accepting them. They read
+ * as a player's own surround rather than as a mis-sized box precisely BECAUSE
+ * the black now runs to the panel edges — which is why there is no border and no
+ * radius here, and why the divider above lives on the rows instead.
+ */
+.watchstage {
+  min-width: 0;
+  min-height: 0;
+  /* Solid WITH a video in it: the letterboxing around a 16:9 picture should be
+     a black surround, not wallpaper sliding about behind the film. Idle, it is
+     the largest single block on the board, and leaving it opaque was the one
+     place the wallpaper stopped dead — see the :has rule below. */
+  background: var(--surface);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+/* Nothing playing: let the panel's own ground through. */
+.watchstage:has(.watchidle) {
+  background: transparent;
+}
+
+.watchidle {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  padding: 20px;
+  width: 100%;
+  max-width: 520px;
+  text-align: center;
+}
+
+.watchpaste {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+}
+
+.watchpaste-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.watchpaste-row {
+  display: flex;
+  gap: 8px;
+}
+
+.watchpaste-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 15px;
+}
+
+.watchpaste-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.watchpaste-go {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.watchpaste-go:hover {
+  border-color: var(--accent);
+}
+
+.watchpaste-bad {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-faint);
+}
+
+/* ---- the player ------------------------------------------------------- */
+
+/*
+ * Fixed, in viewport coordinates, for the same reason .statuscard above is: the
+ * arithmetic stays honest, and neither .panel's overflow:hidden nor a widget's
+ * own scroller can clip it. WatchPlayer supplies left/top/width/height inline
+ * when it is sitting on the stage or filling the panel; the corner player needs
+ * no measurement at all and is styled entirely here.
+ */
+.watchdock {
+  position: fixed;
+  z-index: var(--z-popover);
+  display: grid;
+  /* The picture, then the controls under it. */
+  grid-template-rows: minmax(0, 1fr) auto;
+  /* Spelled out, because an implicit column sizes to its content and a Twitch
+     player's content is wider than the box we put it in — which quietly pushed
+     the right-hand half of the control bar past the edge. */
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+  background: #000;
+}
+
+/* The corner player. Clear of the right panel's tab row by the height of that
+   row plus the board's own padding — the one control you must always be able to
+   reach is the tab that takes you back. */
+/* The corner player is the one that is still an object sitting on top of the
+   board, so it is the only one that keeps a frame. Docked and filled run to the
+   panel edges instead. */
+.watchdock.is-mini {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+  right: 14px;
+  /* Board padding, then the panel's tab row (8 + 40 + 8 and its border), then a
+     gap. Spelled out as a sum because the one control that must never be behind
+     the corner player is the tab that takes you back to it. */
+  bottom: calc(14px + 57px + 9px);
+  width: clamp(280px, 22vw, 420px);
+  height: auto;
+}
+
+.watchdock.is-mini .watchmount {
+  aspect-ratio: 16 / 9;
+}
+
+/* The corner player's resize grip: the far end of its bar, which is the only
+   part of the player the page owns — the picture belongs to an iframe or to the
+   stream's own window. Three diagonal strokes, the grip every desktop uses. */
+.watchgrip {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 16px;
+  margin-right: -6px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background:
+    linear-gradient(135deg, transparent 58%, var(--ink-faint) 58%, var(--ink-faint) 64%, transparent 64%)
+      right 3px bottom 3px / 12px 12px no-repeat,
+    linear-gradient(135deg, transparent 74%, var(--ink-faint) 74%, var(--ink-faint) 80%, transparent 80%)
+      right 3px bottom 3px / 12px 12px no-repeat;
+  opacity: 0.7;
+}
+
+.watchgrip:hover {
+  opacity: 1;
+}
+
+/* Silent only because the other player has the big screen, not by choice. */
+.watchbtn.is-silenced {
+  opacity: 0.55;
+}
+
+/* The Sports tab's team row, clear of the line under the tab's head. */
+.sportswidget .rail {
+  padding-top: 16px;
+}
+
+/* The bar is the drag handle for the corner player, and it has to be: the
+   picture above it is a YouTube or Twitch iframe, which swallows every pointer
+   event before this document sees one. Only in the corner — docked and filled
+   are measured against a panel on every ResizeObserver tick, so a dragged
+   position there would be overwritten inside the frame. */
+.watchbar.is-grab {
+  cursor: grab;
+  /* Stops the drag selecting the time readout, and stops a touch drag scrolling
+     the board underneath instead of moving the player. */
+  user-select: none;
+  touch-action: none;
+}
+
+.watchbar.is-grab:active {
+  cursor: grabbing;
+}
+
+/* The buttons keep the arrow: they are things you press, not places you grab. */
+.watchbar.is-grab .watchbtn {
+  cursor: pointer;
+}
+
+.watchmount {
+  min-width: 0;
+  min-height: 0;
+  background: #000;
+}
+
+.watchmount iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/*
+ * What sits UNDER the stream window. The window is a real Chrome window laid
+ * over this box by agent/stream, so on a good day nobody sees this at all; it is
+ * what shows for the second before the window arrives, and what says why when
+ * it does not.
+ */
+.streamhold {
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  padding: 20px;
+  text-align: center;
+  background: #000;
+}
+
+.streamhold-who {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.streamhold-note {
+  margin: 0;
+  max-width: 460px;
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.streamhold-note:empty {
+  display: none;
+}
+
+/* ---- the Music tab ------------------------------------------------------ */
+
+/* The head bar and a stage; music.apple.com's own window covers the stage (see
+   lib/music.ts), so the stage is only ever seen while that window is opening,
+   or when the board has something drawn over it. */
+.musichead {
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.musichead-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.musichead-controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+}
+
+.musichead-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.musichead-nav button {
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.musichead-nav button:hover {
+  color: var(--ink);
+  border-color: var(--ink-faint);
+}
+
+.musicstage {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #000;
+}
+
+.musicstage-note {
+  margin: 0;
+  padding: 20px;
+  font-size: 18px;
+  color: var(--ink-faint);
+  text-align: center;
+}
+
+/* ---- the Sports tab's team row ------------------------------------------ */
+
+/* All four across the panel, never scrolling: four is the whole list, and a
+   row that fits keeps every tile the same width. */
+.rail > .teamtiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.teamtile-item {
+  min-width: 0;
+}
+
+.teamtile {
+  display: grid;
+  gap: 3px;
+  height: var(--tile-h);
+  padding: 10px 12px 10px 11px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--team-accent, var(--line-strong));
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+  min-width: 0;
+}
+
+a.teamtile:hover {
+  border-color: var(--line-strong);
+  border-left-color: var(--team-accent, var(--line-strong));
+}
+
+.teamtile.is-dead {
+  opacity: 0.6;
+}
+
+.teamtile-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.teamtile-mark {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  font-size: 18px;
+}
+
+.teamtile-name {
+  font-size: 16px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teamtile-live {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--voice-live);
+  background: color-mix(in srgb, var(--voice-live) 14%, transparent);
+}
+
+.teamtile-line {
+  font-size: 13px;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teamtile-when {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.teamtile-when.is-on {
+  color: var(--today);
+}
+
+.teamtile-go {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+a.teamtile:hover .teamtile-go,
+.teamtile.is-playing .teamtile-go {
+  color: var(--ink);
+}
+
+/* Kicked off: the same green breath as the scores grid and a pulsing tab. */
+.teamtile.is-live {
+  border-color: color-mix(in srgb, var(--voice-live) 45%, transparent);
+  border-left-color: var(--team-accent, var(--today));
+  background: color-mix(in srgb, var(--voice-live) 8%, var(--surface));
+  animation: alert-pulse 2s ease-in-out infinite;
+}
+
+.teamtile.is-live:hover,
+.teamtile.is-playing {
+  animation: none;
+}
+
+/* The one already on the stage. */
+.teamtile.is-playing {
+  border-color: var(--line-strong);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .teamtile.is-live {
+    animation: none;
+  }
+}
+
+.watchfail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--bg-raised) 92%, transparent);
+  color: var(--ink-soft);
+  font-size: 14px;
+  text-align: center;
+}
+
+.watchfail a {
+  color: var(--accent);
+}
+
+/* The bar: the handful of things that mean the same on both
+   players, under the picture, where the mouse already is. Each player keeps its
+   own controls — the scrubber is theirs and better than ours would be. */
+.watchbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* Fixed, and it has to be: .watchstage adds exactly this to the picture's
+     height to get its own. Let it drift and the video pillarboxes again. */
+  height: 44px;
+  padding: 0 8px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-sunken);
+}
+
+.watchbtn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+
+.watchbtn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The play triangle and the mute cone are shapes, not outlines. */
+.watchbtn svg path[d^="M5 3.4"],
+.watchbtn svg path[d^="M3 6.2"] {
+  fill: currentColor;
+}
+
+.watchbtn:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.watchbtn[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+/* The handful of hundred milliseconds a player spends becoming drivable. Faded
+   rather than hidden, so the bar does not reflow the instant it goes live. */
+.watchbtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.watchbtn:disabled:hover {
+  color: var(--ink-faint);
+  border-color: transparent;
+}
+
+.watchlabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.watchlabel:hover {
+  color: var(--ink);
+}
+
+/* In the corner there is no room for six controls and a title. Keep the ones
+   that answer "is this still going" and "make it stop"; the rest are a click
+   away on the tab the caption takes you to. */
+.watchdock.is-mini .watchbtn.is-wide {
+  display: none;
+}
+
+.watchdock.is-mini .watchfail {
+  display: none;
+}
+
+/* ---- the corner arrow on a tile ---------------------------------------- */
+
+/* The way out to the real site, on both a video tile and a stream tile. Clicking
+   the tile itself now plays it on the board, so this is the only route to
+   YouTube or Twitch proper — and the only rescue for a video whose uploader
+   disabled embedding, which nothing here can detect in advance. Always in the
+   DOM so a keyboard can reach it; quiet until the tile is hovered. */
+.tile-open {
+  position: absolute;
+  top: 6px;
+  right: 38px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--ink-faint);
+  opacity: 0;
+}
+
+.twlive-item .tile-open {
+  right: 6px;
+}
+
+.tile-open svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.video-item:hover .tile-open,
+.video-item:focus-within .tile-open,
+.twlive-item:hover .tile-open,
+.twlive-item:focus-within .tile-open,
+.tile-open:focus-visible {
+  opacity: 1;
+}
+
+.tile-open:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.twlive-item {
+  position: relative;
+}
+
+/* ---- a game that is on right now --------------------------------------- */
+
+/* A launchpad, not a player. Every sports service refuses to be framed, so this
+   is the fastest possible route out to the one that has the game — and, when
+   nobody has said which that is, to a search. See GameCard.tsx. */
+.gamecard {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  padding: 4px;
+  text-align: left;
+}
+
+.gamecard-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gamecard-crest {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.gamecard-crest.is-blank {
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+}
+
+.gamecard-who {
+  min-width: 0;
+}
+
+.gamecard-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.gamecard-meta {
+  margin: 2px 0 0;
+  font-size: 14px;
+  color: var(--ink-faint);
+}
+
+/* The same green the board uses everywhere for "this is happening and you are
+   not looking at it" — a voice channel, an unwatched video, an alerting tab. */
+.gamecard-live {
+  color: var(--voice-live);
+  font-weight: 650;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.gamecard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.gamecard-go {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 16px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.gamecard-go:hover {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.gamecard-side {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink-soft);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.gamecard-side:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+/* Where the honesty lives: "the right service for this competition" is not the
+   same promise as "this exact stream", and the note is what says so. */
+.gamecard-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-faint);
+}
+
+.watchidle-none {
+  margin: 0;
+  color: var(--ink-faint);
+}
+
+/* ---- today ---------------------------------------------------------------- */
+
+.healthcard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.healthcard-main {
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.healthcard-title {
+  margin: 6px 0 0;
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.healthcard-sub {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 15px;
+}
+
+.healthcard-note {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--voice-live) 12%, transparent);
+  color: var(--voice-live);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.healthcard-acts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.healthdone {
+  padding: 9px 14px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--voice-live) 14%, transparent);
+  color: var(--voice-live);
+  font-size: 15px;
+}
+
+/* ---- chair five: the card under today's session ------------------------- */
+
+/*
+ * The same card, a different edge. Amber rather than the accent, so the two
+ * cards never read as one thing twice: the session is the programme, this is
+ * maintenance. A literal like mobility's purple in kind.tsx — it is one colour
+ * for one feature, not a token the rest of the board should reach for.
+ */
+.healthcard.is-chair {
+  --chair: #e2a55a;
+  margin-top: 10px;
+  border-left-color: var(--chair);
+}
+
+.healthdot.is-chair {
+  display: inline-block;
+  margin-right: 6px;
+  background: #e2a55a;
+}
+
+.chairdots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chairdot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-faint);
+  font-size: 13px;
+}
+
+.chairdot-mark {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  color: #0b0b0b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.chairdot.is-done {
+  color: var(--ink-soft);
+}
+
+.chairdot.is-done .chairdot-mark {
+  border-color: transparent;
+  background: var(--chair);
+}
+
+/* Due: the one thing on the card that moves, and only while it is true. */
+.chairdot.is-due {
+  color: var(--ink);
+}
+
+.chairdot.is-due .chairdot-mark {
+  --pulse-hue: var(--chair);
+  border-color: var(--chair);
+  animation: alert-pulse 2s ease-in-out infinite;
+}
+
+/* Missed is not a failure to dwell on — a faint dash, no red. */
+.chairdot.is-missed .chairdot-mark,
+.chairdot.is-off .chairdot-mark {
+  border-style: dashed;
+  opacity: 0.6;
+}
+
+.healthcard.is-chair.is-due .healthbtn.is-primary {
+  background: var(--chair);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chairdot.is-due .chairdot-mark {
+    animation: none;
+  }
+}
+
+/* ---- exercise figures, drawn ------------------------------------------------ */
+
+/*
+ * The animated figure for every exercise on the Health tab — the programme's
+ * stations and the chair routine's moves (lib/health/figures). The tones are
+ * the figure's own vocabulary: near limbs in the ink, the far ones dimmed, the
+ * working muscle in amber, kettlebells and dumbbells in steel, and "gap" — the
+ * outline that keeps an arm from vanishing into the torso — in the figure's own
+ * ground. scripts/figure-sheet.ts copies these colours; keep the two in step.
+ */
+.exfig {
+  --exfig-ground: var(--surface);
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.exfig svg {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--exfig-ground);
+}
+
+.exfig line {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.exfig line.is-near { stroke: var(--ink); }
+.exfig line.is-mid { stroke: #b5b5b5; }
+.exfig line.is-far { stroke: #767676; }
+.exfig line.is-hot { stroke: #e2a55a; }
+.exfig line.is-prop { stroke: #4a4a4a; }
+.exfig line.is-propSoft { stroke: #343434; }
+.exfig line.is-gap { stroke: var(--exfig-ground); }
+
+.exfig line.is-gear { stroke: #8fa3b3; }
+
+.exfig circle.is-near { fill: var(--ink); }
+.exfig circle.is-far { fill: #767676; }
+.exfig circle.is-gear { fill: #8fa3b3; }
+.exfig circle.is-hot { fill: #e2a55a; }
+.exfig circle.is-propSoft { fill: #343434; }
+.exfig circle.is-face,
+.exfig circle.is-gap { fill: var(--exfig-ground); }
+
+.exfig-label {
+  min-height: 1.3em;
+  color: var(--ink-soft);
+  font-size: 15px;
+  text-align: center;
+}
+
+/* In the running player it is the second-largest thing on screen, after the
+   count: this is what you are copying, from a stretch, at arm's length or more. */
+.exfig.is-run {
+  width: clamp(320px, 30vw, 560px);
+}
+
+/* The figure's slot in a running player, so a callout can sit over it. */
+.healthrun-fig {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+/* "Switch sides": over the figure, in the amber the figure already uses for
+   the working muscle, big enough to catch from a side plank. It is on screen
+   for three seconds and needs no way out. */
+.healthswitch {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 28px;
+  border-radius: 999px;
+  background: #e2a55a;
+  box-shadow: 0 0 0 6px rgb(0 0 0 / 0.35);
+  color: #111;
+  font-size: clamp(22px, 2.2vw, 38px);
+  font-weight: 700;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  animation: healthswitch-in 360ms ease-out both;
+  pointer-events: none;
+}
+
+@keyframes healthswitch-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .healthswitch {
+    animation: none;
+  }
+}
+
+/* In the session preview, beside each station's name: small, still animated,
+   no caption — the name and cue are right there. */
+.exfig.is-thumb {
+  width: 96px;
+  align-self: center;
+}
+
+.exfig.is-thumb .exfig-label {
+  display: none;
+}
+
+.healthstations li:has(.exfig) {
+  align-items: center;
+}
+
+.exfig.is-run .exfig-label {
+  color: #e2a55a;
+  font-size: clamp(18px, 1.6vw, 26px);
+  font-weight: 600;
+}
+
+.chairmoves {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 18px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chairmove {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chairmove .healthstation-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
+/* ---- buttons and links ---------------------------------------------------- */
+
+.healthbtn {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.healthbtn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.healthbtn.is-primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: #0b0b0b;
+  font-weight: 600;
+}
+
+.healthbtn.is-quiet {
+  background: transparent;
+}
+
+.healthbtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.healthlink {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.healthlink:hover:not(:disabled) {
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.healthlink:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.healthnote {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 13px;
+}
+
+.healthnote.is-error {
+  color: var(--crit);
+}
+
+/* ---- stats ---------------------------------------------------------------- */
+
+.healthstats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.healthstat {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.healthstat-value {
+  margin: 6px 0 0;
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+
+.healthstat-value.is-go {
+  color: var(--voice-live);
+}
+
+.healthstat-hint {
+  margin: 6px 0 0;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.healthbar {
+  height: 5px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.healthbar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.healthbar span.is-go {
+  background: var(--voice-live);
+}
+
+/* ---- the week strip ------------------------------------------------------- */
+
+.healthweek-title {
+  margin-top: 2px;
+}
+
+.healthweek {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.healthday {
+  padding: 8px 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  text-align: center;
+}
+
+.healthday.is-today {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.healthday-name {
+  display: block;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.healthday-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+}
+
+.healthday-tick {
+  color: var(--voice-live);
+}
+
+.healthday-rest,
+.healthday-missed {
+  color: var(--line-strong);
+}
+
+.healthday-min {
+  display: block;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- the footer row ------------------------------------------------------- */
+
+/* Deliberately NOT pushed to the bottom with margin-top:auto. On the 1440px-tall
+   panel this board actually runs on there is more column than content, and an
+   action row pinned to the floor puts that emptiness in the MIDDLE, which reads
+   as something failing to load. Stacked, the slack falls under the last thing —
+   which is what every other scrolling widget here does. */
+.healthfoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.healthfoot-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.healthwhy {
+  flex: 1 1 260px;
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.healthwhy .health-eyebrow {
+  display: inline;
+}
+
+/* ---- blocks, stations, lists ---------------------------------------------- */
+
+.healthblocks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.healthblock {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.healthblock-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.healthblock-head h4 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.healthblock-head .mono,
+.healthstation-sec,
+.healthstation-n {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.healthblock-note {
+  margin: 4px 0 0;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.healthblock-note.is-go {
+  color: var(--voice-live);
+}
+
+.healthstations {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.healthstations li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.healthstation-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.healthstation-name {
+  display: block;
+  font-size: 15px;
+}
+
+.healthstation-cue {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.healthchip {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  vertical-align: 1px;
+}
+
+.healthlist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.healthlist li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.healthlist li.is-pending {
+  opacity: 0.5;
+}
+
+.healthlist .mono {
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.healthlist-history .healthlist-when {
+  width: 44px;
+  flex: none;
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+
+.healthlist-history .healthlist-what {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.healthladders {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 16px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.healthladders li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.healthladder-label {
+  color: var(--ink-faint);
+}
+
+.healthladder-rung {
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.healthladder-count {
+  margin-left: 6px;
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+/* ---- inputs --------------------------------------------------------------- */
+
+.healthinput {
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.healthinput:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.healthinput.is-narrow {
+  width: 58px;
+  min-height: 26px;
+  font-size: 12px;
+}
+
+.healthcheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.healthcheck input {
+  accent-color: var(--accent);
+}
+
+.healthslots {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.healthslots li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.healthslot-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.healthquiet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+/* The eye break's own hours sit inside a cue line rather than under a block, so
+   they keep the row and drop the rule above it. */
+.healthquiet.is-inline {
+  display: inline-flex;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+  margin-left: 8px;
+}
+
+.healthtoggles {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---- the walk timer ------------------------------------------------------- */
+
+.healthring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 168px;
+  height: 168px;
+  margin: 4px auto 0;
+}
+
+.healthring svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.healthring-time {
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+}
+
+.healthring-acts {
+  justify-content: center;
+}
+
+.healthmanual {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.healthmanual .healthinput {
+  width: 74px;
+  text-align: center;
+}
+
+.healthquick {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.healthquick-btn {
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.healthquick-btn:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+/* ---- the running session -------------------------------------------------- */
+
+.healthrun {
+  display: grid;
+  grid-row: 2 / -1;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  padding: 14px 16px 16px;
+  background: var(--bg);
+}
+
+.healthrun-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.healthrun-session {
+  margin: 3px 0 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+/*
+ * The countdown and the picture, side by side. It was a single centred column
+ * until the illustrations arrived; the clock stays the biggest thing on the
+ * screen and the photograph sits beside it, because a movement you have to
+ * scroll to see is one you do from memory.
+ */
+.healthrun-main {
+  display: flex;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  text-align: center;
+}
+
+.healthrun-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Read from a mat several feet away, which is the whole reason this state
+   exists. It scales with the panel rather than the viewport: the centre column
+   is the widest on the board, and this is the one thing that should spend it. */
+.healthrun-count {
+  margin: 6px 0 0;
+  font-family: var(--font-mono);
+  font-size: clamp(72px, 11vw, 168px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.healthrun-bar {
+  width: min(420px, 100%);
+  margin-top: 14px;
+}
+
+.healthrun-bar span.is-work {
+  background: var(--accent);
+}
+
+.healthrun-name {
+  margin: 18px 0 0;
+  font-size: clamp(20px, 2.4vw, 32px);
+  font-weight: 650;
+}
+
+.healthrun-cue {
+  max-width: 44ch;
+  margin: 8px 0 0;
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.healthrun-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.healthrun-elapsed {
+  margin-left: 8px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.healthdone-view {
+  align-items: center;
+  text-align: center;
+}
+
+.healthdone-mark {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  margin: 8px auto 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--voice-live) 16%, transparent);
+  color: var(--voice-live);
+  font-size: 26px;
+  place-items: center;
+}
+
+.healthdone-view .health-eyebrow,
+.healthdone-view .healthfoot {
+  justify-content: center;
+}
+
+.healthdone-view .healthblock {
+  width: 100%;
+  text-align: left;
+}
+
+.healthfeedback {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ---- the follow-along shelf ------------------------------------------------ */
+
+.healthstage {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  /* Glass while the shelf is showing, the same as the idle watch stage: this is
+     the bottom third of a panel, and a solid block there was one of the last
+     places the wallpaper stopped. The :empty rule below is what keeps a playing
+     video on a black ground. */
+  background: transparent;
+}
+
+/* Empty means the player is sitting on it — HealthStage renders nothing while
+   something is playing, the same rule WatchStage keeps, because two things
+   fighting over one rectangle is how you get a scrollbar behind a video. Solid
+   black, and deliberately not glass: letterboxing around a video is a surround,
+   not somewhere to show the wallpaper off. */
+.healthstage:empty {
+  background: #000;
+}
+
+.healthshelf {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  padding-bottom: 12px;
+}
+
+.healthshelf-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-right: 16px;
+}
+
+.healthshelf-head .stack-title {
+  margin: 0;
+}
+
+.healthvideos {
+  align-content: start;
+  min-height: 0;
+  margin: 10px 0 0;
+  padding: 0 16px;
+  overflow-y: auto;
+}
+
+.healthstage .empty {
+  margin: 10px 16px;
+  padding: 18px 12px;
+  font-size: 13px;
+}
+
+/* `width: auto`, and it is load-bearing: .watchpaste sets width:100%, which is
+   100% of the CONTAINING block and takes no account of these margins — so the
+   row ran 16px past the stage, whose overflow:hidden then ate the Add button. */
+.healthpaste {
+  width: auto;
+  margin: 10px 16px 0;
+}
+
+.healthpaste .healthinput {
+  width: 132px;
+  flex: none;
+}
+
+/* ---- the eye break ----------------------------------------------------- */
+
+/*
+ * THE WHOLE SCREEN, BLACK, like the bedtime nudge — because the panel version
+ * left two thirds of a 3440px board perfectly readable and was therefore easy to
+ * work straight through. Same ground, same fade, same z-index reasoning as
+ * .takeover: above --z-popover, which is where the docked player is fixed, so a
+ * video cannot sit on top of the thing telling you to look away from it.
+ *
+ * Not a copy of .takeover's rules, though. That one says one sentence and
+ * leaves; this one holds for twenty-five seconds, counts, and has to offer a way
+ * out — so it is a column rather than a single centred line.
+ */
+.eyetake {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-popover) + 10);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6vw;
+  background: #000;
+  text-align: center;
+  animation: takeover-in 420ms ease-out both;
+}
+
+.eyetake-label {
+  margin: 0;
+  color: rgb(255 255 255 / 0.62);
+  font-family: var(--font-mono);
+  font-size: clamp(14px, 1.4vw, 22px);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.eyetake-count {
+  margin: 6px 0 0;
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: clamp(96px, 16vw, 260px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 0.95;
+}
+
+/* The notice is the same shape, quieter: it is a heads-up rather than the thing
+   itself, and a five that shouts as loud as the twenty would train you to skip
+   both. */
+.eyetake.is-warning .eyetake-count {
+  color: rgb(255 255 255 / 0.55);
+  font-size: clamp(64px, 9vw, 150px);
+}
+
+.eyetake-sub {
+  margin: 10px 0 0;
+  color: rgb(255 255 255 / 0.5);
+  font-size: clamp(14px, 1.3vw, 20px);
+}
+
+.eyetake-acts {
+  display: flex;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+/* Dim on black, and only findable when looked for. A break with no way out is
+   one that gets switched off in the settings within a week; a break with an
+   inviting exit is one nobody ever takes. */
+.eyetake-btn {
+  padding: 8px 16px;
+  border: 1px solid rgb(255 255 255 / 0.22);
+  border-radius: var(--radius);
+  background: transparent;
+  color: rgb(255 255 255 / 0.55);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.eyetake-btn:hover {
+  border-color: rgb(255 255 255 / 0.5);
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eyetake {
+    animation: none;
+  }
+}
+
+/* ---- the quick row: the bottom of the stack --------------------------- */
+
+/*
+ * One line of the things that are worth a glance and not worth a click. No
+ * title, like everything else in this column — a label above four numbers costs
+ * more height than the numbers.
+ */
+/*
+ * THE FOOT OF THE COLUMN, dressed like the other two.
+ *
+ * The centre and right panels both end in a sunken band with a rule above it —
+ * their tab rows. This is the left column's equivalent, and it now says so: the
+ * same --surface-sunken, the same border-top, the same 8px padding, and a total
+ * height matched to theirs so the three rules across the board are one line.
+ */
+.widget.quick {
+  background: var(--surface-sunken);
+}
+
+/* Scoped through .panel.is-stack deliberately: the stack's own rule for these
+   scrollers carries four classes, so a three-class selector here lost to it
+   silently and the padding stayed at 12. It stays tighter than the rest of the
+   column on purpose — it is a row of controls, not a panel of information — but
+   it moved with everything else so the step down still reads as deliberate. */
+.panel.is-stack > .widget.quick > .widget-scroll {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+/* The buttons sit ON the sunken band, so they take the panel's own surface to
+   stay legible against it — the inverse of everywhere else on this board. */
+.widget.quick .quick-item.is-acts .watchbtn {
+  background: var(--surface);
+}
+
+.quick-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.quick-item {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  align-content: center;
+}
+
+/* The controls sit hard right, so the row reads left-to-right as facts and then
+   things you can press. The reset lives in here beside the mixer buttons — it is
+   the same kind of thing, and at the same size. */
+.quick-item.is-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quick-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+/* Same drawing rules as the player bar's icons, at label size. */
+.quick-icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.quick-value {
+  font-size: 17px;
+  /* Tabular, or every second of the countdown nudges the row sideways. */
+  font-variant-numeric: tabular-nums;
+}
+
+.quick-value.is-quiet {
+  color: var(--ink-faint);
+}
+
+.quick-value.is-live {
+  color: var(--accent);
+}
+
+/* The master volume slider, sized to sit on the value line of its row rather
+   than tower over it. Chrome is what the board runs, but the -moz rules keep it
+   honest in dev. A thin track, an accent thumb — the same vocabulary as the
+   mixer buttons two items along. */
+.quick-volume {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 96px;
+  height: 18px;
+  margin: 2px 0 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.quick-volume::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+
+.quick-volume::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+}
+
+.quick-volume::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+
+.quick-volume::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+}
+
+.quick-volume:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- nudges editor: every nudge in one place, over the board ---------- */
+.nudges-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: color-mix(in srgb, #000 55%, transparent);
+}
+
+.nudges-modal {
+  width: min(880px, calc(92vw / var(--board-zoom)));
+  max-height: calc(86vh / var(--board-zoom));
+  overflow-y: auto;
+  padding: 22px 24px 24px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+}
+
+.nudges-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.nudges-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.nudges-x {
+  padding: 6px;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--ink-faint);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.nudges-x:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.nudges-x.is-small {
+  padding: 4px;
+  font-size: 12px;
+}
+
+.nudges-note {
+  margin: 4px 0;
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.nudges-note.is-error {
+  color: var(--crit);
+}
+
+.nudges-list {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+}
+
+.nudges-empty {
+  padding: 10px 2px;
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.nudges-row {
+  display: grid;
+  grid-template-columns: auto 92px minmax(140px, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.nudges-row.is-off {
+  opacity: 0.5;
+}
+
+.nudges-onoff {
+  display: flex;
+  align-items: center;
+}
+
+.nudges-time,
+.nudges-label-input {
+  padding: 5px 7px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+}
+
+.nudges-time {
+  width: 92px;
+}
+
+.nudges-label-input {
+  width: 100%;
+}
+
+.nudges-label.is-program {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-soft);
+}
+
+.nudges-tag {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.nudges-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.nudges-cue {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.nudges-seg {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.nudges-seg button {
+  padding: 4px 10px;
+  background: var(--surface-sunken);
+  border: none;
+  color: var(--ink-faint);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.nudges-seg button.is-on {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  color: var(--ink);
+}
+
+.nudges-days {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.nudges-day {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface-sunken);
+  color: var(--ink-faint);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.nudges-day.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.nudges-del {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 18px;
+}
+
+.nudges-add {
+  display: grid;
+  grid-template-columns: 92px minmax(140px, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-strong);
+}
+
+.nudges-day:disabled,
+.nudges-seg button:disabled,
+.nudges-x:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* ---- mail: forwarded Outlook inbox, glows green on unread ------------- */
+.mailwidget.has-unread {
+  /* The panel itself glows, over and above the tab's pulse — the one thing on
+     this column worth looking up for. Steady, not pulsing: a whole panel
+     breathing is more than the news deserves. */
+  border-color: color-mix(in srgb, var(--voice-live) 55%, var(--line-strong));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--voice-live) 40%, transparent),
+    0 0 18px color-mix(in srgb, var(--voice-live) 30%, transparent);
+}
+
+.mail-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 8px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--voice-live);
+  color: #062;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.maillist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mailerror {
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--crit);
+}
+
+.mailrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--line);
+}
+
+/* The row is a button: the whole left block opens and closes the message. */
+.mailrow-main {
+  /* BASIS 0, NOT auto. On `auto` the base size is the subject's own width, so a
+     long subject made the row overflow and the delete button wrapped onto a line
+     of its own underneath the text. A zero basis means this block never claims
+     more than what is left after the button, so the button keeps its place on
+     the right of the header line whatever the subject says. */
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 2px;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mailrow-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.mailrow-from {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mailrow.is-unread .mailrow-from {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.mailrow-when {
+  flex: none;
+}
+
+.mailrow-subject {
+  color: var(--ink-soft);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mailrow.is-open .mailrow-subject {
+  white-space: normal;
+}
+
+.mailrow.is-unread .mailrow-subject {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.mailrow-snippet {
+  font-size: 12px;
+  color: var(--ink-faint);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The X — quiet until hovered, then the board's red for "this removes something". */
+.mailrow-x {
+  flex: none;
+  /* Beside the header, not floating against the middle of a tall opened row. */
+  align-self: flex-start;
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--ink-faint);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mailrow-x:hover:not(:disabled) {
+  color: var(--crit);
+}
+
+.mailrow-x:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The opened message, full width under the header row. */
+.mailrow-body {
+  /* Last, always. It is the only thing in the row that takes a full line, and
+     ordering it explicitly is what stops it from landing between the header and
+     the delete button. */
+  order: 1;
+  flex-basis: 100%;
+  width: 100%;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 2px;
+  padding: 6px 2px 10px;
+  border-top: 1px solid var(--line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.mailrow-nobody {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+/* ---- amazon: what is on the way -------------------------------------- */
+.pkglist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pkgrow {
+  padding: 2px 8px;
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.pkgrow-main {
+  /* The whole row is the button, like a mail row. min-width 0 so a long item
+     title ellipsizes instead of widening the panel. */
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pkgitems {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 5px 0 2px;
+  min-width: 0;
+}
+
+.pkgitem {
+  /* One item per line, its own thumbnail beside it — never a "+1 more". */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pkgitem-thumb {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  /* Product shots are on white; a white tile reads as a picture, not a hole. */
+  background: #fff;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+}
+
+.pkgitem-thumb.is-empty {
+  background: none;
+  border-style: dashed;
+}
+
+.pkgitem-title {
+  flex: 1 1 0;
+  min-width: 0;
+  color: var(--ink);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pkgitem-more {
+  padding-left: 44px;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.pkgrow.is-arriving {
+  /* Out for delivery — the one status worth a glance, so it pulses like a fresh
+     video does. Reuses the board's one pulse keyframe. */
+  animation: alert-pulse 2s ease-in-out infinite;
+}
+
+.pkgrow-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pkgstatus {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  color: var(--ink-faint);
+}
+
+.pkgstatus.is-out_for_delivery,
+.pkgstatus.is-shipped {
+  color: var(--voice-live);
+  border-color: color-mix(in srgb, var(--voice-live) 45%, transparent);
+}
+
+.pkgstatus.is-delayed {
+  color: var(--crit);
+  border-color: color-mix(in srgb, var(--crit) 45%, transparent);
+}
+
+.pkgstatus.is-delivered {
+  color: var(--ink-faint);
+}
+
+.pkgstatus.is-problem {
+  color: var(--crit);
+  border-color: color-mix(in srgb, var(--crit) 45%, transparent);
+}
+
+/* Delivered recedes — unless a return window is closing, or it is open. */
+.pkgrow.is-delivered:not(.is-returnsoon):not(.is-open) {
+  opacity: 0.6;
+}
+
+.pkgrow-eta {
+  font-size: 12px;
+  color: var(--ink-faint);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pkgrow-detail {
+  font-size: 12px;
+  color: var(--ink-faint);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pkgreturn {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--ink-faint);
+  border: 1px solid var(--line);
+}
+
+.pkgreturn.is-soon {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 50%, transparent);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+}
+
+.pkgrow-more {
+  padding: 0 0 10px 44px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.pkgrow-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--ink-faint);
+}
+
+.pkgrow-said {
+  margin-top: 4px;
+}
+
+.pkgrow-said.is-faint {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+.pkgtimeline {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--line);
+}
+
+.pkgtimeline li {
+  display: grid;
+  grid-template-columns: 128px 1fr;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.pkgtimeline li:first-child {
+  color: var(--ink);
+}
+
+.pkgtimeline-when {
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.pkgtimeline-place {
+  color: var(--ink-faint);
+}
+
+.pkgrow-links {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.pkgrow-links a {
+  color: var(--accent);
+}
+
+.quick-clock {
+  /* Smaller than it was: the date moved above it, so this now has to sit on the
+     same value line as sunset and the countdowns rather than owning two rows. */
+  font-size: 20px;
+  font-weight: 600;
+  /* A NUMBER, and a tight one, because this row's height is not free: the whole
+     widget has to come to the same 57px as the tab rows opposite it, and the
+     label-over-clock block is what competes with the buttons for it. */
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.quick-acts {
+  display: flex;
+  gap: 8px;
+}
+
+/*
+ * The three mixer controls are the only things on this board you press to
+ * change the room, so they are drawn as buttons rather than as glyphs that
+ * happen to be clickable: a border that is always there instead of appearing on
+ * hover, and as large as this row can hold.
+ *
+ * WHICH IS 40px, NOT THE 66 THEY WERE. The rule above this row has to line up
+ * with the tab rows at the bottom of the other two columns, and both bottom out
+ * at the same pixel — so this widget's height is fixed at theirs, and the
+ * clock's own label-over-value block already accounts for most of it.
+ */
+.quick-item.is-acts .watchbtn {
+  width: 40px;
+  height: 40px;
+  border-color: var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.quick-item.is-acts .watchbtn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.quick-item.is-acts .watchbtn:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--surface-sunken);
+}
+
+.quick-item.is-acts .watchbtn[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+/* ---- notes / to-do: a checklist over a page --------------------------- */
+
+/*
+ * FIVE rows rather than the widget's usual two: the head, the box you type a
+ * task into, the checklist, the page, and one line of status under it. Three of
+ * those are pinned and two are not, and which is which is the whole layout:
+ *
+ *   head        auto           — always there.
+ *   .todoadd    auto           — pinned. A capture box you have to scroll back
+ *                                up to find is a capture box you stop using.
+ *   .notes-todos minmax(0,auto) — the top half. Grows with the list and stops at
+ *                                half the panel (below), then scrolls inside
+ *                                itself. It is `auto` rather than 1fr so that an
+ *                                EMPTY checklist costs nothing and the page gets
+ *                                the whole tab — half a panel of blank tiles is
+ *                                a worse way of saying "no tasks" than nothing.
+ *   .notes-text minmax(0,1fr)  — the bottom half, and whatever the top does not
+ *                                take.
+ *   .todonote   auto           — pinned. "Saved" is not worth scrolling to find
+ *                                and must not move when the text grows.
+ */
+.widget.notes {
+  grid-template-rows: auto auto minmax(0, auto) minmax(0, 1fr) auto;
+}
+
+/* Half the board's height is about half this panel — the board is drawn for one
+   3440x1440 screen and scaled, so this is a real measurement rather than a guess. */
+.notes-todos {
+  max-height: calc(46vh / var(--board-zoom));
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* TodoList renders nothing at all when there is nothing on it, so the row it
+   sits in has to disappear too — padding and a rule would otherwise draw a
+   16-pixel band across the tab announcing an empty list. */
+.notes-todos:empty {
+  padding: 0;
+  border: 0;
+}
+
+.notes-text {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 16px 18px;
+  resize: none;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  /* Big, because this is for writing at rather than reading back, and the board
+     is across a room. */
+  font-family: var(--font-sans);
+  font-size: 20px;
+  line-height: 1.45;
+  outline: none;
+}
+
+.notes-text::placeholder {
+  color: var(--ink-faint);
+}
+
+.notes-text:focus-visible {
+  background: var(--surface-sunken);
+}
+
+.widget.notes > .todonote {
+  margin: 0;
+  padding: 8px 18px;
+}
+
+/* ---- the event editor: a pane beside the calendar --------------------- */
+
+/*
+ * The grid keeps the room and the form takes a fixed column. A modal over the
+ * calendar would be a dialog asking about the calendar while covering it, which
+ * is a thing you have to remember around.
+ */
+.widget-scroll.is-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 14px;
+  min-height: 0;
+}
+
+.calgrid {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+}
+
+.caleditor {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
+}
+
+.eventeditor {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.eventeditor-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.eventfield {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.eventfield-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* Two fields that belong to one answer — a date and the time on it. */
+.eventrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.healthinput.is-wide {
+  width: 100%;
+}
+
+textarea.healthinput {
+  resize: vertical;
+  font-family: var(--font-sans);
+  line-height: 1.4;
+}
+
+/* The weekdays, as seven small toggles rather than a multi-select nobody can
+   use with a mouse. The checkbox itself is hidden; the label IS the button. */
+.eventdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.eventday {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+
+.eventday input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.eventday:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: var(--ink);
+}
+
+.eventday:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.eventeditor-acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.eventeditor-allday {
+  margin-top: 2px;
+}
+
+/* Present for screen readers, absent for everyone else — the weekday buttons
+   show one letter and "T" alone is two different days. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- water: a bottle that fills up ------------------------------------ */
+
+.water {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+
+.waterbottle {
+  width: 52px;
+  height: 130px;
+  flex: none;
+}
+
+/* White line art, the way the reference drawing is: outline only, no fill. */
+.water-outline,
+.water-cap,
+.water-ridge {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.9;
+}
+
+.water-ridge {
+  stroke-width: 1.6;
+  opacity: 0.35;
+}
+
+/*
+ * THE LEVEL IS ONE VARIABLE and the transition does the rest, so adding a glass
+ * raises the water rather than teleporting it.
+ *
+ * The transform itself is inline, set by the component — see the note there.
+ * This owns only the easing, which is the half CSS is good at.
+ */
+.water-body {
+  transition: transform 700ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/*
+ * Two waves, different speeds and directions, sliding past each other. That
+ * beat — long, and never repeating on the same frame — is what reads as liquid
+ * settling rather than as a looping GIF. Calm on purpose: this sits four inches
+ * from a live EQ and must not compete with it.
+ */
+.water-wave {
+  fill: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.water-wave-a {
+  animation: water-drift-a 9s linear infinite;
+}
+
+/* STILL ONCE IT IS DONE. A bottle that is still sloshing reads as "keep going";
+   flat water is the whole reward for having finished. */
+.water.is-full .water-wave-a,
+.water.is-full .water-wave-b {
+  animation: none;
+}
+
+.water-wave-b {
+  fill: color-mix(in srgb, var(--accent) 18%, transparent);
+  animation: water-drift-b 13s linear infinite;
+}
+
+@keyframes water-drift-a {
+  from { transform: translateX(0); }
+  to { transform: translateX(60px); }
+}
+
+@keyframes water-drift-b {
+  from { transform: translateX(0); }
+  to { transform: translateX(-60px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .water-wave-a,
+  .water-wave-b {
+    animation: none;
+  }
+  .water-body {
+    transition: none;
+  }
+}
+
+.water-side {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.water-read {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+}
+
+.water-oz {
+  font-size: 26px;
+  font-weight: 650;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.water-goal {
+  font-size: 14px;
+  color: var(--ink-faint);
+}
+
+.water-streak {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.water-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.water-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+  transition: width 700ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.water-pours {
+  display: flex;
+  gap: 6px;
+}
+
+.water-btn {
+  flex: 1;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.water-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--ink);
+}
+
+.water-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Quieter than the pours: taking water back is a correction, not an action. */
+.water-btn.is-undo {
+  flex: 0 0 auto;
+  color: var(--ink-faint);
+}
+
+.water-week {
+  list-style: none;
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+}
+
+.water-day {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.water-day.is-met {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--ink);
+}
+
+.water-day.is-today {
+  outline: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* ---- board health: is the agent there, and a way to kick it ----------- */
+
+/* Everything from here is pushed to the right-hand end of the row: the facts
+   read left to right, then the state, then the things you can press. */
+/* The volume knob starts the right-aligned group, so it sits fixed just left of
+   the agent-status light rather than floating after the nudge message. Health
+   and the mixer buttons follow it on the right edge. */
+.quick-item.is-volume {
+  margin-left: auto;
+}
+
+.quick-value.is-small .quick-dot {
+  margin-right: 6px;
+}
+
+.quick-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.quick-dot.is-on {
+  background: var(--voice-live);
+}
+
+.quick-value.is-small {
+  display: flex;
+  align-items: center;
+}
+
+/* Amber rather than red: the agent being down is a thing to fix, not a fault in
+   the board — most of it carries on working perfectly without it. */
+.quick-dot.is-off {
+  background: var(--today);
+}
+
+.quick-value.is-small {
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+/* Turning while it works, so a restart that takes a few seconds looks like
+   something happening rather than a dead button. */
+.watchbtn.is-spinning svg {
+  animation: quick-spin 900ms linear infinite;
+}
+
+@keyframes quick-spin {
+  to { transform: rotate(360deg); }
+}
+
+.quick-note {
+  font-size: 12px;
+  color: var(--ink-faint);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- weather particles ------------------------------------------------ */
+
+/*
+ * BEHIND THE TILE'S CONTENT, ALWAYS. The tiles carry temperatures that have to
+ * stay legible from across a room, so every particle sits at z-index 0 with the
+ * text above it, clipped to the tile's own rounded corners, and drawn in the
+ * same faint accent the water bottle uses.
+ *
+ * Only rain, snow, storms and a real wind get these. Sun and cloud get nothing:
+ * something moving should mean something is happening, and particles on four
+ * days out of five would be wallpaper rather than a signal.
+ */
+.wfx {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* The widget becomes the positioning context, and everything in it comes
+   forward over the weather rather than being painted under it. */
+.wxwidget {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.wxwidget > *:not(.wfx) {
+  position: relative;
+  z-index: 1;
+}
+
+.wfx-drop {
+  position: absolute;
+  top: -12%;
+  width: 1.5px;
+  height: 9%;
+  border-radius: 999px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, var(--accent) 55%, transparent)
+  );
+  animation-name: wfx-fall;
+  /* A default, because the component scatters the real one per particle — and
+     without it a missing inline style means duration 0, which is invisible. */
+  animation-duration: 1.1s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes wfx-fall {
+  from { transform: translateY(0); opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  to { transform: translateY(1250%); opacity: 0; }
+}
+
+.wfx-flake {
+  position: absolute;
+  top: -4%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+  animation-name: wfx-drift;
+  /* A default, because the component scatters the real one per particle — and
+     without it a missing inline style means duration 0, which is invisible. */
+  animation-duration: 6s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* Down and sideways at once, so it wanders rather than falling like rain. */
+@keyframes wfx-drift {
+  from { transform: translate(0, 0); opacity: 0; }
+  10% { opacity: 1; }
+  50% { transform: translate(14px, 1600%); }
+  90% { opacity: 1; }
+  to { transform: translate(-8px, 3200%); opacity: 0; }
+}
+
+.wfx-gust {
+  position: absolute;
+  left: -40%;
+  width: 34%;
+  height: 1.5px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    color-mix(in srgb, var(--accent) 45%, transparent),
+    transparent
+  );
+  animation-name: wfx-blow;
+  /* A default, because the component scatters the real one per particle — and
+     without it a missing inline style means duration 0, which is invisible. */
+  animation-duration: 3.4s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+@keyframes wfx-blow {
+  from { transform: translateX(0); opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  to { transform: translateX(420%); opacity: 0; }
+}
+
+/* Rain falls harder in a storm, and the pane behind it lights up now and then. */
+.wfx.is-storm .wfx-drop {
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, var(--accent) 70%, transparent)
+  );
+}
+
+.wfx-flash {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--accent) 42%, transparent);
+  opacity: 0;
+  animation: wfx-flash 7s ease-out infinite;
+}
+
+@keyframes wfx-flash {
+  0%, 92% { opacity: 0; }
+  93% { opacity: 0.9; }
+  95% { opacity: 0.15; }
+  96% { opacity: 0.7; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wfx {
+    display: none;
+  }
+}
+
+/* A label can be any length you like, and the row is still not going to be
+   widened by one — but 210px was clamping labels that fit fine. The quick row is
+   973px at 3440 and its five items plus gaps use about 620 of it, so the ~350px
+   of slack was being spent on nothing while "Have you had coffee?" (285px) got
+   an ellipsis.
+   320px clears every slot currently configured, the longest being the coffee
+   reminder, with room for a slightly longer one. The truncation stays as the
+   backstop for something genuinely absurd rather than as the normal case, and
+   .quick-item already sets min-width: 0, so this shrinks properly if the row
+   ever does run out of room. */
+.quick-value.is-nudge {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- the nudge takeover ----------------------------------------------- */
+
+/*
+ * The whole board, gone, and one sentence in the middle of it.
+ *
+ * Above everything including the docked player, which is the only other thing
+ * that claims the screen. Five seconds is long enough to read twice and short
+ * enough that it never needs a button — though a click or a key ends it early,
+ * because anything covering a whole display has to have a way out.
+ */
+.takeover {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-popover) + 10);
+  display: grid;
+  place-items: center;
+  padding: 6vw;
+  background: #000;
+  cursor: pointer;
+  animation: takeover-in 520ms ease-out both;
+}
+
+.takeover.is-leaving {
+  animation: takeover-out 600ms ease-in both;
+}
+
+@keyframes takeover-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes takeover-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/*
+ * Huge, and sized to the viewport rather than to a breakpoint: this is read
+ * from across a room, and the board is one 3440px display. clamp keeps a long
+ * sentence from running off the edges of a narrower one.
+ */
+.takeover-text {
+  margin: 0;
+  max-width: 24ch;
+  text-align: center;
+  font-size: clamp(48px, 9vw, 190px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: #fff;
+  text-wrap: balance;
+  animation: takeover-rise 620ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes takeover-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* The fades are the whole effect, so reduced motion gets the black and the
+   words without them rather than nothing at all. */
+@media (prefers-reduced-motion: reduce) {
+  .takeover,
+  .takeover.is-leaving,
+  .takeover-text {
+    animation-duration: 1ms;
+  }
+}
+
+/* ---- water: behind the pace ------------------------------------------- */
+
+/*
+ * A glow BEHIND the panel rather than a border or a red number, so it reads
+ * from across the room without turning the widget into a warning box. Three
+ * steps, because "slightly behind" and "has not had a drink since breakfast"
+ * are not the same message.
+ *
+ * The colour is --crit, the same red the Computer tab uses for a threshold
+ * crossed, and it is deliberately NOT the accent: everything blue in this panel
+ * means water, and the alarm has to be something else.
+ */
+.water.is-behind {
+  position: relative;
+  border-radius: var(--radius);
+}
+
+.water.is-behind::before {
+  content: "";
+  position: absolute;
+  /* Outside the content, so nothing sits on top of a glowing edge. */
+  inset: -10px -12px;
+  border-radius: var(--radius);
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    120% 100% at 12% 50%,
+    color-mix(in srgb, var(--crit) var(--water-alarm, 10%), transparent),
+    transparent 72%
+  );
+  animation: water-alarm 3.4s ease-in-out infinite;
+}
+
+.water.is-behind > * {
+  position: relative;
+  z-index: 1;
+}
+
+.water.is-behind-1 { --water-alarm: 12%; }
+.water.is-behind-2 { --water-alarm: 20%; }
+.water.is-behind-3 { --water-alarm: 30%; }
+
+/* A slow breath rather than a blink: this is a nag, not an alarm, and it sits
+   six inches from a live EQ. */
+@keyframes water-alarm {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.water-behind {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--crit);
+}
+
+/* The streak and the shortfall never appear together — one is a reward and the
+   other is a nag — but if they ever did, the nag goes last. */
+.water.is-behind .water-streak {
+  margin-left: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .water.is-behind::before {
+    animation: none;
+  }
+}
+
+/* ---- the daylight bar -------------------------------------------------- */
+
+/*
+ * Midnight to midnight in six pixels, between today's hours and the air row.
+ *
+ * VERY THIN ON PURPOSE. It is a picture, not a readout — the two ends carry the
+ * only numbers, and everything else is answered by where the marker sits. Any
+ * taller and it starts competing with the things in this panel that have words
+ * in them.
+ *
+ * Night is the panel's own ground rather than black, so the bar reads as a
+ * cut-out of the day rather than a component sitting on top of one.
+ */
+.sunrow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.sunrow-end {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+/* The frame is what makes it readable. Without it the night band (#14161c) is
+   darker than the panel it sits on, so the bar had no edges — it read as a blue
+   smear rather than as a day with a beginning and an end. A light hairline, not
+   --line-strong, because the thing being outlined is darker than the surface. */
+.sunbar {
+  position: relative;
+  display: flex;
+  height: 8px;
+  border: 1px solid rgb(255 255 255 / 0.3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.sunband {
+  height: 100%;
+}
+
+.sunband.is-night {
+  background: #14161c;
+}
+
+.sunband.is-dawn {
+  background: #3b3f63;
+}
+
+.sunband.is-golden {
+  background: #d9a441;
+}
+
+.sunband.is-day {
+  background: #6fa8d6;
+}
+
+/* A hairline rather than a dot: it has to be findable against gold AND against
+   near-black, and a 2px white rule with a dark edge is the one thing that is
+   legible on both. */
+/* A hairline rather than a dot: it has to be findable against gold AND against
+   near-black, and a white rule with a dark edge is the one thing legible on
+   both. Inside the frame rather than overhanging it — the bar clips its own
+   contents so the bands keep the rounded ends. */
+.sunbar-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.55);
+}
+
+/* ---- air: quality, pollen, UV ----------------------------------------- */
+
+/*
+ * Three readings across, between today's hours and the week ahead — all three
+ * are facts about going outside TODAY, and the week is a different question.
+ *
+ * Each is a label and a number over one clause of advice. The clause is the
+ * point: a number with a lookup table behind it is not something a board
+ * can usefully show.
+ */
+.airrow {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0;
+}
+
+.airitem {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.airitem-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.airitem-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.airitem-value {
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.airitem-advice {
+  font-size: 12px;
+  line-height: 1.25;
+  color: var(--ink-soft);
+}
+
+/*
+ * THE COLOUR IS THE LEFT LIP, and nothing else.
+ *
+ * These were outlined whole, with a tinted background and a coloured number —
+ * three of them side by side, which stopped reading as a warning and started
+ * reading as a colour scheme. The lip is the same device the Up Next tiles use
+ * for their layer, it survives being seen from across the room, and it leaves
+ * the words the same grey as the rest of the board.
+ *
+ * Green for a reading you can ignore, orange for one worth planning around, red
+ * for one worth changing plans for — and green is deliberately present rather
+ * than absent, because "the air is fine" is an answer this row exists to give.
+ */
+.airitem.is-ok {
+  border-left-color: var(--ok);
+}
+
+.airitem.is-watch {
+  border-left-color: var(--today);
+}
+
+.airitem.is-bad {
+  border-left-color: var(--crit);
+}
+
+
+
+/* ---- the setup guide: every setting, over the board ------------------- */
+/* A portal onto <body>, like the eye break and the nudges editor, and styled
+   like the nudges modal: a sunken surface with a strong line, over a darkened
+   board. Two columns inside — the section list and the section — because
+   eighteen sections in one scroll would be a manual, not a menu. */
+
+.setup-gear {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 70;
+  width: 40px;
+  height: 40px;
+  padding: 9px;
+  background: var(--glass);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.setup-gear:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.setup-gear svg {
+  width: 100%;
+  height: 100%;
+}
+
+.setup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: color-mix(in srgb, #000 62%, transparent);
+}
+
+.setup-modal {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  width: min(1280px, calc(94vw / var(--board-zoom)));
+  height: min(900px, calc(90vh / var(--board-zoom)));
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.setup-nav {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 20px 12px 16px;
+  border-right: 1px solid var(--line);
+  background: var(--bg-raised);
+}
+
+.setup-brand {
+  margin: 0 8px 14px;
+  font-size: 19px;
+  letter-spacing: 0.01em;
+}
+
+.setup-brand span {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.setup-nav ul {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.setup-navitem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.setup-navitem:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.setup-navitem.is-active {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.setup-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+
+.setup-dot.is-on {
+  background: var(--voice-live);
+}
+
+.setup-dot.is-off {
+  background: var(--warn);
+}
+
+.setup-navfoot {
+  margin: 12px 8px 0;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.setup-body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+.setup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 26px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.setup-head h3 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.setup-x {
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--ink-faint);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.setup-x:hover {
+  color: var(--ink);
+}
+
+.setup-content {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 26px 26px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.setup-content h4 {
+  margin: 22px 0 6px;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.setup-content p {
+  margin: 0 0 10px;
+  color: var(--ink-soft);
+}
+
+.setup-content code {
+  padding: 1px 5px;
+  background: var(--surface-sunken);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  color: var(--ink);
+}
+
+.setup-content a {
+  color: var(--accent);
+}
+
+.setup-lead {
+  font-size: 16px;
+  color: var(--ink) !important;
+  margin-bottom: 14px !important;
+}
+
+.setup-note {
+  margin: 10px 0 !important;
+  padding: 9px 12px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface-sunken);
+  font-size: 14px;
+}
+
+.setup-note.is-warn {
+  border-left-color: var(--warn);
+}
+
+.setup-note.is-good {
+  border-left-color: var(--voice-live);
+}
+
+.setup-steps {
+  margin: 6px 0 12px;
+  padding-left: 22px;
+  color: var(--ink-soft);
+}
+
+.setup-steps li {
+  margin: 0 0 6px;
+}
+
+.setup-steps strong,
+.setup-content p strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.setup-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 26px 16px;
+  border-top: 1px solid var(--line);
+}
+
+/* --- the form pieces --- */
+
+.setup-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0 0 12px;
+  min-width: 0;
+}
+
+.setup-field-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+.setup-field-hint {
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+
+.setup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+}
+
+.setup-grid > .setup-field.is-wide {
+  grid-column: 1 / -1;
+}
+
+.setup-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+}
+
+.setup-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.setup-input:disabled {
+  opacity: 0.55;
+}
+
+.setup-input.is-mono {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+}
+
+textarea.setup-input {
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.setup-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.setup-row > .setup-input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.setup-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 10px;
+}
+
+.setup-rows .setup-row {
+  margin: 0;
+}
+
+.setup-rows .setup-row > .setup-input:nth-child(2),
+.setup-rows .setup-row > .setup-input:nth-child(3) {
+  flex: 0 0 76px;
+}
+
+.setup-btn {
+  padding: 8px 14px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.setup-btn:hover:not(:disabled) {
+  border-color: var(--ink-faint);
+}
+
+.setup-btn.is-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.setup-btn.is-quiet {
+  background: none;
+  border-color: transparent;
+  color: var(--ink-soft);
+}
+
+.setup-btn.is-quiet:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.setup-btn.is-small {
+  padding: 4px 9px;
+  font-size: 13px;
+}
+
+.setup-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.setup-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 12px;
+  font-size: 15px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.setup-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.setup-toggle.is-small {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.setup-secret {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setup-secret > .setup-input {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.setup-secret-state {
+  padding: 8px 10px;
+  font-size: 14px;
+  color: var(--ink-faint);
+}
+
+.setup-secret-state.is-set {
+  color: var(--voice-live);
+}
+
+.setup-savebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 6px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+.setup-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.setup-check-result {
+  font-size: 13.5px;
+  color: var(--ink-soft);
+}
+
+.setup-check-result.is-ok {
+  color: var(--voice-live);
+}
+
+.setup-check-result.is-bad {
+  color: var(--warn);
+}
+
+.setup-command {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 8px;
+  padding: 8px 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.setup-command code {
+  flex: 1 1 auto;
+  padding: 0;
+  background: none;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.setup-colour {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setup-colour input[type="color"] {
+  width: 44px;
+  height: 36px;
+  padding: 2px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.setup-colour > .setup-input {
+  flex: 0 0 110px;
+  width: auto;
+}
+
+.setup-swatch {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.setup-picks {
+  list-style: none;
+  margin: -6px 0 12px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.setup-pick {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--surface-sunken);
+  border: none;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.setup-pick:hover {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-sunken));
+}
+
+.setup-pick span {
+  color: var(--ink-faint);
+  font-size: 12.5px;
+}
+
+.setup-card {
+  margin: 0 0 12px;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+}
+
+.setup-teams {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.setup-teamhead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+
+.setup-teamhead img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.setup-teamhead .setup-btn {
+  margin-left: auto;
+}
+
+.setup-muted {
+  color: var(--ink-faint);
+  font-size: 13px;
+}
+
+.setup-muted.is-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.setup-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.setup-chip {
+  padding: 4px 10px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.setup-chip.is-on {
+  border-color: var(--accent);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.setup-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.setup-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.setup-list li > span:first-child {
+  flex: 1 1 auto;
+}
+
+.setup-checklist {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  columns: 2;
+}
+
+.setup-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  color: var(--ink-faint);
+  break-inside: avoid;
+}
+
+.setup-checklist li.is-on {
+  color: var(--ink);
+}
+
+.setup-link {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.empty a {
+  color: var(--accent);
+}

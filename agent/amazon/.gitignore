@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+# amazon-orders writes its saved session / cookies here; never commit those.
+*.pickle
+*.json
+.amazonorders/
+cookies*
+session*
+# AMAZON_DEBUG_DIR dumps raw order/tracker pages — they carry the delivery address.
+debug/
+*.html

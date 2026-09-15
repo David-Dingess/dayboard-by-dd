@@ -1,0 +1,52 @@
+{
+  "name": "dayboard-by-dd",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy.ps1",
+    "tasks:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1 -TasksOnly",
+    "lint": "eslint",
+    "test": "vitest run",
+    "refresh": "tsx scripts/refresh.ts",
+    "refresh:upstreams": "tsx scripts/fetch-upstreams.ts",
+    "refresh:watch": "tsx scripts/enrich-watch.ts",
+    "import:youtube": "tsx scripts/import-youtube.ts",
+    "validate": "tsx scripts/validate.ts",
+    "event": "tsx scripts/event.ts",
+    "todo": "tsx scripts/todo.ts",
+    "notes": "tsx scripts/notes.ts",
+    "water": "tsx scripts/water.ts",
+    "figures": "tsx scripts/figure-sheet.ts",
+    "health": "tsx scripts/health.ts",
+    "watched": "tsx scripts/watched.ts",
+    "feed:check": "tsx scripts/feed-check.ts",
+    "check:widgets": "tsx scripts/check-widgets.ts",
+    "twitch:auth": "tsx scripts/twitch-auth.ts",
+    "settings": "tsx scripts/settings.ts"
+  },
+  "dependencies": {
+    "gtfs-realtime-bindings": "^2.2.0",
+    "ical-generator": "^11.1.1",
+    "ical.js": "^2.2.1",
+    "luxon": "^3.7.2",
+    "next": "16.3.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "suncalc": "^2.0.2",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.7.5",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.4",
+    "tsx": "^4.23.13",
+    "typescript": "^5",
+    "vitest": "^5.0.0"
+  }
+}

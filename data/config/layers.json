@@ -1,0 +1,35 @@
+[
+  {
+    "id": "health",
+    "name": "Health",
+    "color": "#e2622b",
+    "order": 70,
+    "inFeed": true,
+    "showByDefault": true,
+    "defaultAlarmMinutes": null,
+    "defaultAlarmMinutesAllDay": null,
+    "emoji": "❤️"
+  },
+  {
+    "id": "birthdays",
+    "name": "Birthdays",
+    "color": "#ea94b8",
+    "order": 80,
+    "inFeed": true,
+    "showByDefault": true,
+    "defaultAlarmMinutes": null,
+    "defaultAlarmMinutesAllDay": -540,
+    "emoji": "🎂"
+  },
+  {
+    "id": "personal",
+    "name": "Personal",
+    "color": "#86bf8a",
+    "order": 90,
+    "inFeed": true,
+    "showByDefault": true,
+    "defaultAlarmMinutes": 60,
+    "defaultAlarmMinutesAllDay": -540,
+    "emoji": "📌"
+  }
+]

@@ -1,0 +1,44 @@
+{
+  "videos": {
+    "warmup": [
+      {
+        "id": "9eydA0oKJa0",
+        "title": "5 MIN FULL BODY WARM UP AT HOME | No Equipment",
+        "channel": "Tom Peto Training",
+        "addedAt": "2026-09-06"
+      }
+    ],
+    "cooldown": [
+      {
+        "id": "HtJv4Gv5HTQ",
+        "title": "5 Min FULL BODY POST WORKOUT COOL DOWN STRETCH ROUTINE | Follow Along",
+        "channel": "Tom Peto Training",
+        "addedAt": "2026-09-06"
+      }
+    ],
+    "mobility": [
+      {
+        "id": "aRVFt79LqCM",
+        "title": "10 Min. Morning Mobility Routine | Full Body, No Equipment, Follow Along",
+        "channel": "mobility by julia reppel",
+        "addedAt": "2026-09-06"
+      }
+    ],
+    "strength": [
+      {
+        "id": "lUDESX3Gi6E",
+        "title": "20 Min Beginner Friendly Kettlebell Workout | Follow Along at Home",
+        "channel": "Tom Peto Training",
+        "addedAt": "2026-09-06"
+      }
+    ],
+    "minimum": [
+      {
+        "id": "99ewh8IACrA",
+        "title": "Ultimate Ab & Core Workout - Bird Dog, Dead Bug, & Bridge for Strong Abs",
+        "channel": "Andrew's Fitness Training",
+        "addedAt": "2026-09-06"
+      }
+    ]
+  }
+}

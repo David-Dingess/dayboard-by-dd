@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+    // NOT experimentalDecorators. @elgato/streamdeck's `action` takes a
+    // ClassDecoratorContext, which is the TC39 stage-3 form — turning the legacy
+    // flag on would change the call shape and break every action in here.
+    "experimentalDecorators": false
+  },
+  "include": ["src/**/*.ts", "scripts/**/*.mjs"]
+}

@@ -1,0 +1,26 @@
+{
+  "name": "dayboard-deck",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The Stream Deck plugin that drives Dayboard. Not part of the Next build.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "icons": "python scripts/make-icons.py",
+    "profile": "node scripts/make-profile.mjs",
+    "link": "streamdeck link com.dayboard.deck.sdPlugin",
+    "restart": "streamdeck restart com.dayboard.deck",
+    "dev": "streamdeck dev"
+  },
+  "dependencies": {
+    "@elgato/streamdeck": "^2.1.2",
+    "@elgato/utils": "^0.6.0"
+  },
+  "devDependencies": {
+    "@elgato/cli": "^1.9.0",
+    "@types/node": "^24.13.3",
+    "esbuild": "^0.25.0",
+    "typescript": "^5"
+  }
+}
