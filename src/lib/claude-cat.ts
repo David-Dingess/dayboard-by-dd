@@ -1,5 +1,7 @@
 /**
- * The pet on the shelf.
+ * The pet on the shelf: a fan-art Clawd, Claude Code's mascot. Not a cat — the
+ * module, the component and the CSS still say "cat" because it replaced one,
+ * and renaming them buys nothing but churn. Anything a reader SEES says Clawd.
  *
  * Sprite strips derived from OpenPets' v2.5.1 default pet, which is MIT with no
  * carve-out for artwork — see public/pets/LICENSE-openpets.txt for the notice
@@ -7,10 +9,10 @@
  * hand-recoloured cat from the `pixel-buddy` pack, which was legally fine and
  * looked it; this is an eight-frame walk cycle drawn by someone who can draw.
  *
- * NOT clawd's artwork, despite what the files are called — that set is All
- * Rights Reserved fan art and may not be copied. These are OpenPets' own
- * sprites of their own character, which happens to be a similar orange
- * creature. OpenPets themselves replaced it with an owl after v2.5.1.
+ * Clawd is Anthropic's character and this is unofficial; the notices say so.
+ * There is a separate Clawd sprite set elsewhere that is All Rights Reserved
+ * and may not be copied — these are not those. OpenPets replaced its version
+ * with an owl after v2.5.1, which is why the tag is pinned.
  *
  * THE ANIMATION LIVES IN CSS, not here. globals.css keys the strip, the frame
  * count and the tempo off the shelf's data-state; this module exists only to

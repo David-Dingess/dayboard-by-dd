@@ -1,9 +1,9 @@
 # Dayboard by DD
 
 A dashboard for your second monitor. Your calendars in the middle; the weather, the
-trains, what is playing, the score and who is in voice down the left; the agenda,
-the to-dos, the mail, the packages and the machine's vitals in tabs on the
-right. Sports schedules for the teams you pick, live scores while they play, and
+trains, what is playing, the score and who is in your Discord Voice channel on the
+bottom left; the agenda, the to-dos, the mail, the packages and the machine's vitals
+in tabs on the right. Sports schedules for the teams you pick, live scores while they play, and
 the team's streaming site framed inside the board. A 52-week exercise programme
 with drawn animations, nudges, and a 20/20/20 eye break. YouTube uploads and
 Twitch streams that play in the board. A Stream Deck plugin to drive it all.
@@ -13,8 +13,24 @@ It refreshes itself every thirty seconds and never asks you to press anything.
 Next.js, JSON files as the database, no cloud, no accounts, no API keys for the
 basics. Windows for the whole thing; the board itself runs anywhere Node runs.
 
-**[Read the introduction](introduction/README.md)** for the walkthrough and the
-screenshots.
+![Dayboard by DD on a 3440x1440 ultrawide: the week's calendar in the middle, weather, Now Playing, scores, water and Discord voice on the left, the agenda on the right](introduction/board-3440x1440.png)
+
+<table>
+  <tr>
+    <td width="50%"><img src="introduction/board-watch-tab.png" alt="The Watch tab: new YouTube uploads and live Twitch streams"><br><sub><b>Watch</b> — new uploads and live streams, playing in the board</sub></td>
+    <td width="50%"><img src="introduction/board-sports-tab.png" alt="The Sports tab: a tile per team with the next fixture"><br><sub><b>Sports</b> — your teams, live scores, where it is on</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="introduction/board-health-tab.png" alt="The Health tab: today's session, the chair routine, streak and week"><br><sub><b>Health</b> — a 52-week programme with drawn animations (<a href="#health-and-exercise-read-this-first">read the warning</a>)</sub></td>
+    <td width="50%"><img src="introduction/board-computer-tab.png" alt="The Computer tab: CPU, GPU, memory, drives, network and top processes"><br><sub><b>Computer</b> — the machine's vitals from a small local agent</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="introduction/board-todos-tab.png" alt="The To-Dos tab: a checklist over a scratch page"><br><sub><b>To-Dos</b> — a checklist over a scratch page</sub></td>
+    <td width="50%"><img src="introduction/guide-welcome.png" alt="The setup guide that opens on first launch"><br><sub><b>The setup guide</b> — the whole configuration, on the board itself</sub></td>
+  </tr>
+</table>
+
+**[Read the introduction](introduction/README.md)** for the full walkthrough.
 
 ## Five minutes to a board
 
@@ -51,14 +67,14 @@ open http://localhost:6767. The guide still opens.
 | **Sports** | A layer per team with fixtures and alarms, live scores, where-to-watch links, the streaming site framed in the board | ESPN's public API, or an ICS feed |
 | **Watch** | New uploads from your YouTube channels, live Twitch streams you follow, playing in the board | YouTube RSS (no key), Twitch (one-time authorization) |
 | **Music** | Your music service's web player, framed as a tab | Apple Music, YouTube Music, Spotify, Tidal, … |
-| **Health** | A 52-week strength and mobility programme, drawn exercise animations, walk timer, chair routine, nudges, the eye break | Built in |
-| **Discord** | Who is in voice on your servers, a chime when someone joins | The server widget; optionally a bot |
+| **Health** | A 52-week strength and mobility programme, drawn exercise animations, walk timer, chair routine, nudges, the eye break — written and drawn by Claude, an AI; [read this first](#health-and-exercise-read-this-first) | Built in |
+| **Discord** | Who is in your Discord Voice channel on the bottom left, a chime when someone joins | The server widget; optionally a bot |
 | **Now Playing / Computer** | Album art and a live EQ, CPU/GPU/memory/fans/drives/network health, top processes | The PC agent (C#, local) |
 | **Mail** | The newest messages in one mailbox, delete from the board | IMAP, an app password |
-| **Packages** | Amazon orders on the way, out-for-delivery pulses, return windows | Your Amazon login (local poller) |
+| **Packages** | Amazon orders on the way, out-for-delivery pulses, return windows | Your Amazon login, via [amazon-orders](https://github.com/alexdlaird/amazon-orders) (local poller) |
 | **Planner / To-Dos / Notes** | The agenda, a checklist, a scratch page | Built in |
 | **Water** | A bottle that fills, a daily goal, a streak | Built in |
-| **Claude usage** | Session and weekly limits as thin bars, and a cat that walks while Claude works | The Claude CLI's own login |
+| **Claude usage** | Session and weekly limits as thin bars, and a fan-art Clawd that walks while Claude works | The Claude CLI's own login |
 | **Subway** | Next trains at your station and disruptions on your lines | MTA (New York only, off by default) |
 | **Stream Deck** | Tabs, videos, streams, teams, water, sound, alerts, reset | The plugin in `deck/` |
 
@@ -112,9 +128,45 @@ scripts/               setup, deploy, the daily refresh, and the CLIs
 - **amazon.com only** for Packages, and it stores your Amazon password locally in plain text. The section says so before you turn it on.
 - The board listens on **localhost only** and every write is refused from anywhere else. There is no login: the machine is the boundary.
 
+## Health and exercise: read this first
+
+The Health programme — the 52-week plan, every exercise, cue, set and rep
+scheme, the chair routine, the walk targets, the eye break, the notes on why —
+and every drawn animation of it were **written and illustrated entirely by
+Claude, an AI model made by Anthropic**. No doctor, physiotherapist, certified
+trainer or other qualified professional wrote, reviewed or approved any of it,
+and neither did the author of Dayboard by DD. It may contain mistakes: a wrong
+cue, an unsuitable progression, or an animation that shows a movement
+incorrectly.
+
+It is general information, **not medical advice**, and it is not a substitute
+for a qualified professional who knows your health. Talk to a doctor before
+starting this or any exercise programme — especially if you are pregnant, have a
+heart, lung, joint, back or other medical condition, take medication, are
+recovering from an injury or surgery, or have not exercised in a while.
+
+Stop straight away if you feel pain, dizziness, faintness, chest pain or unusual
+shortness of breath, and get medical help if it does not pass. The follow-along
+videos are other people's, hosted on YouTube; this project did not make them and
+does not vouch for them.
+
+**You use the Health tab entirely at your own risk.** To the fullest extent the
+law allows, it is provided "as is", without warranty of any kind, and neither the
+author nor any contributor is liable for any injury, loss or damage arising from
+its use. The same warning is at the foot of the Health tab and in the setup
+guide.
+
 ## Credits
 
-The cat is the OpenPets default pet (MIT — `public/pets/LICENSE-openpets.txt`).
+The Packages poller is built on
+**[amazon-orders](https://github.com/alexdlaird/amazon-orders) by
+[Alex Laird](https://github.com/alexdlaird)** (MIT), which does the real work of
+reading Amazon's order history.
+
+The pet on the shelf is **fan art of Clawd**, the Claude Code mascot, from the
+OpenPets default pet (MIT — `public/pets/LICENSE-openpets.txt`). Clawd and Claude
+are Anthropic's; this project is not affiliated with or endorsed by Anthropic.
+
 The animated background is a recreation of "Minimalist Black" by ElliotIsLame
 for Wallpaper Engine. Weather from Open-Meteo, schedules and scores from ESPN's
 public endpoints, transit from the MTA.

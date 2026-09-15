@@ -20,5 +20,16 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-The cat sprites in public/pets are derived from OpenPets and carry their own
-MIT notice in public/pets/LICENSE-openpets.txt.
+The pet sprites in public/pets are a fan-art Clawd, derived from OpenPets, and
+carry their own MIT notice in public/pets/LICENSE-openpets.txt. Clawd and
+Claude are Anthropic's; this project is not affiliated with or endorsed by
+Anthropic.
+
+The Packages poller in agent/amazon depends on amazon-orders by Alex Laird
+(https://github.com/alexdlaird/amazon-orders, MIT), installed from PyPI and not
+redistributed here.
+
+The Health programme and its drawn animations were written and illustrated by
+Claude, an AI model, are not medical advice, and are provided under the terms
+above, without warranty. Read "Health and exercise: read this first" in
+README.md before using them.

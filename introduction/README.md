@@ -10,7 +10,7 @@ Most desks have a screen that mostly shows a wallpaper. This turns that screen i
 
 The calendar sits in the middle. Every calendar you already keep (Google, iCloud, Outlook, the work one) lands on it in its own colour, and so do your teams' fixtures, your birthdays, and the day's workout.
 
-Down the left: the weather, what's playing, the score, a water bottle, and who's in Discord voice. Nothing to click. You glance.
+Down the left: the weather, what's playing, the score, a water bottle, and who is in your Discord Voice channel on the bottom left. Nothing to click. You glance.
 
 On the right, a row of tabs. The agenda, the to-dos, the machine's vitals, the mail, the packages on the way.
 
@@ -92,6 +92,8 @@ Discord, YouTube, Twitch, email, Amazon packages, the PC agent, Claude usage, yo
 
 **Health.** A 52-week strength and mobility programme with the exercises drawn as animations, a walk timer, a five-minute chair routine, nudges at the times you choose, and a 20/20/20 eye break that blacks the screen out for twenty seconds every twenty minutes.
 
+> **Read this before you exercise.** The programme, every cue and every drawn animation were written and illustrated entirely by Claude, an AI. No doctor or trainer reviewed any of it, and neither did I. It can be wrong. It is not medical advice. Check with a doctor before you start, stop if anything hurts, and use it at your own risk. The [full warning](../README.md#health-and-exercise-read-this-first) is in the main README, and a short one sits at the foot of the tab.
+
 ![To-dos](board-todos-tab.png)
 
 **To-Dos.** A checklist over a scratch page. Ticking a box deletes the to-do. The page saves itself.
@@ -140,7 +142,7 @@ Next.js. JSON files as the database. No cloud, no accounts.
 
 Everything you type into the guide goes into `data/settings.json`, which is ignored by git. The team schedules come from ESPN's public endpoints, refreshed daily by a scheduled task. Weather is Open-Meteo. Nothing here needs an API key.
 
-The cat on the shelf is the OpenPets default pet, MIT licensed. The moving background is a recreation of ElliotIsLame's "Minimalist Black" for Wallpaper Engine.
+Packages is built on [amazon-orders](https://github.com/alexdlaird/amazon-orders) by Alex Laird, which does the hard part. The little one on the shelf is fan art of Clawd, the Claude Code mascot, from the OpenPets default pet (MIT); Clawd is Anthropic's, and this isn't affiliated with them. The moving background is a recreation of ElliotIsLame's "Minimalist Black" for Wallpaper Engine.
 
 `docs/architecture.md` has the rules worth knowing before you change anything. `docs/setup.md` is the whole guide in text form.
 

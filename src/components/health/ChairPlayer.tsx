@@ -14,6 +14,7 @@ import {
 import { recordChair } from "@/lib/health-actions";
 import type { HealthSnapshot } from "@/lib/health-store";
 import { ExerciseFigure } from "./ExerciseFigure";
+import { HealthWarning } from "./HealthWarning";
 import { SWITCH_SHOW_SEC, SwitchCallout, useSwitchCue } from "./switch-cue";
 import { useIntervalTimer } from "./useIntervalTimer";
 
@@ -402,6 +403,7 @@ export function ChairPreview({
           </button>
         </div>
       </div>
+      <HealthWarning />
     </>
   );
 }

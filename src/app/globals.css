@@ -4992,6 +4992,33 @@ a.teamtile:hover .teamtile-go,
   display: inline;
 }
 
+/* The health warning. Faint like the why-note beside it, but boxed and kept
+   off the edge so it reads as a notice, not as another stat hint. The warn
+   rule on the left is the only colour in it. */
+.healthwarning {
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: 8px;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.healthwarning summary {
+  cursor: pointer;
+}
+
+.healthwarning summary .health-eyebrow {
+  display: inline;
+  color: var(--warn);
+}
+
+.healthwarning p {
+  margin: 8px 0 0;
+}
+
 /* ---- blocks, stations, lists ---------------------------------------------- */
 
 .healthblocks {

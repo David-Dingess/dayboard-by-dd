@@ -796,7 +796,9 @@ export function AmazonSection({ settings, writable }: SectionProps) {
         What is on the way: recent Amazon orders as cards with the item, the carrier&apos;s latest
         scan and the delivery day, pulsing when one is out for delivery, and a warning when a
         return window is closing. A Python poller signs in as you and reads your order history —
-        there is no Amazon API for this, so it needs your credentials.
+        there is no Amazon API for this, so it needs your credentials. The poller is built on{" "}
+        <a href="https://github.com/alexdlaird/amazon-orders" target="_blank" rel="noopener noreferrer">amazon-orders</a> by
+        Alex Laird.
       </Lead>
       <Note tone="warn">
         Your Amazon password is stored in <code>data/settings.json</code> on this machine, in plain

@@ -14,6 +14,7 @@ import { HealthHistory } from "./HealthHistory";
 import { HealthPlayer } from "./HealthPlayer";
 import { HealthSettings } from "./HealthSettings";
 import { HealthStage } from "./HealthStage";
+import { HealthWarning } from "./HealthWarning";
 import { EyeBreak } from "./EyeBreak";
 import { KindDot, kindLabel } from "./kind";
 import { WalkTimer } from "./WalkTimer";
@@ -447,6 +448,8 @@ function Today({
           </button>
         </div>
       </div>
+
+      <HealthWarning />
     </>
   );
 }

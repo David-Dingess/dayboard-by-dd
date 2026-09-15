@@ -164,6 +164,12 @@ time and the days. Quiet hours, the eye-break interval and the programme's
 start date are on the Health tab's settings card. Press **Turn on alerts** once
 so the chime and the notifications are allowed.
 
+**Before you exercise:** the programme, its cues and its drawn animations were
+written and illustrated entirely by Claude, an AI, and reviewed by no doctor or
+trainer. It is not medical advice. Check with a doctor first, stop if anything
+hurts, and use it at your own risk. The full note is in the
+[README](../README.md#health-and-exercise-read-this-first).
+
 ## 16. Subway (New York)
 
 Off by default. Turn it on, pick a home station from the MTA list, the lines

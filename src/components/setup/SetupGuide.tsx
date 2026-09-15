@@ -8,6 +8,7 @@ import { updateSettings } from "@/lib/settings-actions";
 import { SCREEN_PRESETS, type ScreenPreset } from "@/lib/settings-schema";
 import { lightness, wallpaperGreys, screenZoom } from "@/lib/screen";
 import { selectTab } from "@/components/Panel";
+import { HEALTH_WARNING_FULL } from "@/lib/health/disclaimer";
 import { closeSetup, goToSection, isSection, openSetup, seedSetup, useSetupState, type SectionId } from "./setup-store";
 import { CheckButton, Command, Field, Lead, Lines, Note, SaveBar, Select, Steps, Text, Toggle } from "./fields";
 import {
@@ -324,7 +325,7 @@ function Welcome({ status }: SectionProps) {
     <>
       <Lead>
         Dayboard is a dashboard for your second monitor: your calendar in the middle, the weather,
-        the trains, what is playing and who is in voice down the left, and a row of tabs on the
+        the trains, what is playing and who is in your Discord Voice channel on the bottom left, and a row of tabs on the
         right for the to-dos, the mail, the packages and the machine. It refreshes itself every
         thirty seconds and never asks you to press anything.
       </Lead>
@@ -544,10 +545,11 @@ function Claude({ settings, writable }: SectionProps) {
     <>
       <Lead>
         If you use Claude Code, the board shows how much of the session and weekly limits is left,
-        as three thin bars beside the water bottle — and a small cat on a shelf that walks while
-        Claude is working, waves when it is waiting on you, and sleeps otherwise.
+        as three thin bars beside the water bottle — and a little fan-art Clawd, Claude Code&apos;s
+        mascot, on a shelf: walking while Claude is working, waving when it is waiting on you,
+        and asleep otherwise.
       </Lead>
-      <Toggle checked={claude.enabled} disabled={!writable} label="Show the usage bars and the cat" onChange={(enabled) => setClaude({ enabled })} />
+      <Toggle checked={claude.enabled} disabled={!writable} label="Show the usage bars and Clawd" onChange={(enabled) => setClaude({ enabled })} />
       <SaveBar dirty={dirty} disabled={!writable} onSave={() => updateSettings({ claude })} />
       <h4>What it needs</h4>
       <Steps>
@@ -560,8 +562,12 @@ function Claude({ settings, writable }: SectionProps) {
       <CheckButton name="claude" label="Check Claude" />
       <Note>
         Nothing is sent anywhere: the agent reads the CLI&apos;s own credentials file and asks
-        Anthropic for the usage numbers the CLI itself shows. The cat reads the CLI&apos;s session
+        Anthropic for the usage numbers the CLI itself shows. Clawd reads the CLI&apos;s session
         files to know whether something is running.
+      </Note>
+      <Note>
+        Clawd is Anthropic&apos;s character. This is unofficial fan art, not made or endorsed by
+        Anthropic; the sprites come from OpenPets (MIT).
       </Note>
     </>
   );
@@ -624,6 +630,10 @@ function Nudges(_: SectionProps) {
         out the screen for twenty seconds every twenty minutes, and <strong>nudges</strong>: a
         chime, a pulse on the tab and a Windows notification at the times you choose.
       </Lead>
+      <h4>Read this before you exercise</h4>
+      {HEALTH_WARNING_FULL.map((paragraph) => (
+        <p key={paragraph.slice(0, 32)}>{paragraph}</p>
+      ))}
       <h4>Your own nudges</h4>
       <p>
         Press the <strong>bell</strong> in the bottom-left row of the board. Every nudge is listed

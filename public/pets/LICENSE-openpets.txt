@@ -1,3 +1,7 @@
+The pet in this directory is fan art of Clawd, the Claude Code mascot. Clawd
+and Claude are Anthropic's; this is unofficial and not affiliated with or
+endorsed by Anthropic.
+
 The pet sprites in this directory (clawd-walk.png, clawd-wave.png,
 clawd-sleep.png) are derived from the default pet spritesheet of OpenPets
 (https://github.com/OpenPetsHQ/openpets), taken at tag v2.5.1 —

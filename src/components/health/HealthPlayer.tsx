@@ -5,6 +5,7 @@ import { FIGURES, buildSteps, formatDuration, sideAt, type Feedback, type Sessio
 import { recordSession, sendFeedback } from "@/lib/health-actions";
 import { primeAudio } from "./beeps";
 import { ExerciseFigure } from "./ExerciseFigure";
+import { HealthWarning } from "./HealthWarning";
 import { SWITCH_SHOW_SEC, SwitchCallout, useSwitchCue } from "./switch-cue";
 import { useIntervalTimer } from "./useIntervalTimer";
 
@@ -202,6 +203,10 @@ export function HealthPlayer({
             </button>
           </div>
         </div>
+
+        {/* Here as well as on Today: the agenda's Start button lands on this
+            preview directly, without passing through Today. */}
+        <HealthWarning />
       </div>
     );
   }

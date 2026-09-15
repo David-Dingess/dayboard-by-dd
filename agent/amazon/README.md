@@ -3,7 +3,10 @@
 Reads your recent Amazon orders and writes `data/packages.json`, which the
 board's **Packages** tab renders — what is on the way, what is out for delivery
 (that one pulses), what just arrived, and return windows about to close. Built on
-[amazon-orders](https://github.com/alexdlaird/amazon-orders).
+[amazon-orders](https://github.com/alexdlaird/amazon-orders) by
+[Alex Laird](https://github.com/alexdlaird), MIT licensed — the library does the
+real work of reading Amazon's order history; this agent only maps it onto the
+board. Thank you, Alex.
 
 The board never touches Amazon. This agent logs in **once**, interactively, then
 a scheduled poll reuses the saved session headlessly.

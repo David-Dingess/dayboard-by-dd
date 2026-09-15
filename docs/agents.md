@@ -13,7 +13,7 @@ One process, one port (7343, loopback only), several routes:
 | `/nowplaying`, `/art`, `/events` (SSE) | Now Playing: the Windows media session, album art, a WASAPI loopback FFT for the EQ |
 | `/vitals` | The Computer tab: CPU, GPU, memory, fans, drives, disks, network, top processes (LibreHardwareMonitor) |
 | `/audio` | The headphones/speakers toggle and mic mute, through Voicemeeter's Remote API |
-| `/claude`, `/claude/activity` | The Claude usage bars and the cat: the CLI's credentials file and session files |
+| `/claude`, `/claude/activity` | The Claude usage bars and Clawd: the CLI's credentials file and session files |
 | `/board` | Keeps the board window on top and fullscreen (a KVM leaves the taskbar over it otherwise) |
 
 The browser reads it directly — a server has no route to 127.0.0.1 on your
@@ -77,7 +77,8 @@ run_poll.cmd
 
 ## The Amazon poller — `agent/amazon` (Python 3)
 
-`amazon-orders` plus Playwright's Chromium for the sign-in challenge. Reads the
+Built on [amazon-orders](https://github.com/alexdlaird/amazon-orders) by Alex
+Laird (MIT), plus Playwright's Chromium for the sign-in challenge. Reads the
 `amazon` section of settings, writes `data/packages.json`. There is no Amazon
 API for this, so it signs in as you.
 
